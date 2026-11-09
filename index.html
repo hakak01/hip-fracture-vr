@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0f1a20">
+  <title>Hip Fracture VR Trainer</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./lib/three/three.module.min.js",
+        "three/addons/": "./lib/three/addons/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="app"></div>
+
+  <div id="loading">
+    <div class="box">
+      <h1>Hip Fracture VR Trainer</h1>
+      <p id="load-text">Loading…</p>
+      <div class="bar"><div id="load-bar"></div></div>
+      <p class="small">CT: TotalSegmentator dataset (CC BY 4.0)</p>
+    </div>
+  </div>
+
+  <div id="title">
+    <b>Hip VR</b> <span id="side-label">Right hip</span>
+    <button id="btn-about" class="link">About</button>
+  </div>
+
+  <div id="pip" title="Tap to enlarge">
+    <div class="shot"><canvas id="pip-ap" width="512" height="512"></canvas></div>
+    <div class="shot"><canvas id="pip-lat" width="512" height="512"></canvas></div>
+  </div>
+
+  <div id="toolbar">
+    <div class="group">
+      <span class="lbl">C-arm</span>
+      <button id="btn-ap" class="big">AP</button>
+      <button id="btn-lat" class="big">Lateral</button>
+      <button id="btn-invert">Invert</button>
+    </div>
+    <div class="group">
+      <span class="lbl">Skin</span>
+      <button id="btn-skin" class="toggle on">On</button>
+      <input id="skin-fade" type="range" min="0" max="100" value="100" aria-label="Skin fade">
+    </div>
+    <div class="group">
+      <span class="lbl">Side</span>
+      <button id="btn-right" class="seg on">Right</button>
+      <button id="btn-left" class="seg">Left</button>
+    </div>
+    <div class="group">
+      <button id="btn-view">Reset view</button>
+      <button id="btn-vr" class="vr" hidden>Enter VR</button>
+    </div>
+  </div>
+
+  <div id="about" hidden>
+    <div class="box">
+      <h2>About</h2>
+      <p>Training simulator for a trochanteric (AO 31A1) hip fracture: reduction and DHS guidewire. Not for clinical use.</p>
+      <p><b>CT data:</b> case <span id="about-case"></span> from the TotalSegmentator dataset v2.0.1
+        (Wasserthal J. et al. <i>Radiology: Artificial Intelligence</i> 2023;5(5):e230024).
+        Licence <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>.
+        Changed: cropped, resampled, bone and skin surfaces extracted.
+        <a href="https://doi.org/10.5281/zenodo.10047292" target="_blank" rel="noopener">doi:10.5281/zenodo.10047292</a></p>
+      <p><b>3D engine:</b> three.js (MIT licence).</p>
+      <p class="small">Browser: drag to turn, pinch or scroll to zoom, two fingers to pan. Tap the C-arm screen buttons or use the bar below.</p>
+      <button id="btn-about-close" class="big">Close</button>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

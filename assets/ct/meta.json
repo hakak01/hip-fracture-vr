@@ -1,0 +1,105 @@
+{
+ "case": "s0774",
+ "dataset": "TotalSegmentator dataset v2.0.1 (doi:10.5281/zenodo.10047292)",
+ "licence": "CC BY 4.0",
+ "patient": "female, 75 years, CT angiography pelvis-leg (contrast removed for DRR)",
+ "frame": "mm; +x patient left, +y anterior, +z inferior; origin midway between femoral head centres",
+ "operatedSide": "right",
+ "landmarks": {
+  "headCenter": [
+   -78.31,
+   1.95,
+   3.09
+  ],
+  "headRadius": 19.86,
+  "headCenterContra": [
+   78.31,
+   -1.95,
+   -3.09
+  ],
+  "headRadiusContra": 20.33,
+  "neckAxisLateral": [
+   -0.73,
+   -0.44,
+   0.53
+  ],
+  "shaftAxis": [
+   -0.02,
+   0.16,
+   0.99
+  ],
+  "shaftAxisContra": [
+   -0.11,
+   0.07,
+   0.99
+  ],
+  "neckShaftAngle": 118.0,
+  "gtTip": [
+   -120.59,
+   -27.94,
+   -5.76
+  ],
+  "kneeCenter": [
+   -105.67,
+   22.16,
+   374.66
+  ],
+  "kneeCenterContra": [
+   70.65,
+   -8.11,
+   377.09
+  ],
+  "wellLegCutPoint": [
+   69.75,
+   3.34,
+   71.24
+  ]
+ },
+ "body": {
+  "tableY": -108.9,
+  "crotchZ": 82.2,
+  "zTop": -146.8,
+  "zBottom": 787.7,
+  "topSection": {
+   "xMin": -209.1,
+   "xMax": 168.9,
+   "yMin": -98.4,
+   "yMax": 192.6
+  }
+ },
+ "volume": {
+  "file": "volume.bin.gz",
+  "dims": [
+   205,
+   206,
+   265
+  ],
+  "spacing": 1.5,
+  "corner": [
+   -245.84,
+   -114.19,
+   -149.01
+  ],
+  "layout": "planar uint8 x-fastest: base(delta), excess(delta), label",
+  "huScale": 12,
+  "huOffset": -1000,
+  "softHU": 30,
+  "labels": {
+   "pelvis": 1,
+   "femurOp": 2,
+   "femurContra": 3
+  }
+ },
+ "meshes": {
+  "file": "anatomy.glb",
+  "names": [
+   "pelvis",
+   "femur_op",
+   "femur_contra",
+   "legbones_op",
+   "legbones_contra",
+   "skin",
+   "well_leg"
+  ]
+ }
+}

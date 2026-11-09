@@ -41,3 +41,8 @@ A realistic VR trainer for a trochanteric fracture: reduce the fracture, then pl
 3. DHS guidewire and scoring.
 
 Later, not now: PFN entry point, AO 31A2 and 31A3, then a separate lumbar spine trainer.
+
+---
+
+## Progress
+- Milestone 1: done (Nov 2026). CT: TotalSegmentator s0774 (CC BY 4.0), approved by me.
