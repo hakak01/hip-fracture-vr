@@ -46,3 +46,4 @@ Later, not now: PFN entry point, AO 31A2 and 31A3, then a separate lumbar spine 
 
 ## Progress
 - Milestone 1: done (Nov 2026). CT: TotalSegmentator s0774 (CC BY 4.0), approved by me.
+- Milestone 2: done (Nov 2026). Added on request: 30° anteromedial oblique C-arm view to check anteromedial cortical support.

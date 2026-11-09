@@ -46,11 +46,12 @@ function undelta(a, nx) {
 
 export async function loadAssets(base, onProgress = () => {}) {
   const meta = await (await fetch(base + 'meta.json')).json();
-  const parts = { glb: 0, vol: 0 };
-  const report = () => onProgress(0.3 * parts.glb + 0.7 * parts.vol);
-  const [glbBuf, volGz] = await Promise.all([
+  const parts = { glb: 0, vol: 0, frac: 0 };
+  const report = () => onProgress(0.25 * parts.glb + 0.7 * parts.vol + 0.05 * parts.frac);
+  const [glbBuf, volGz, fracGz] = await Promise.all([
     fetchBuffer(base + meta.meshes.file, p => { parts.glb = p; report(); }),
     fetchBuffer(base + meta.volume.file, p => { parts.vol = p; report(); }),
+    fetchBuffer(base + meta.fracture.file, p => { parts.frac = p; report(); }),
   ]);
   const loader = new GLTFLoader();
   loader.setMeshoptDecoder(MeshoptDecoder);
@@ -65,5 +66,19 @@ export async function loadAssets(base, onProgress = () => {}) {
   const label = raw.subarray(2 * n, 3 * n);
   undelta(baseCh, nx);
   undelta(excess, nx);
-  return { meta, gltf, volume: { base: baseCh, excess, label } };
+  return { meta, gltf, volume: { base: baseCh, excess, label }, fracture: parseFracture(await gunzip(fracGz), meta.fracture) };
+}
+
+function parseFracture(raw, F) {
+  const np = F.sdfProx.dims.reduce((a, b) => a * b);
+  const nd = F.sdfDist.dims.reduce((a, b) => a * b);
+  const i8 = new Int8Array(raw.buffer, raw.byteOffset, raw.length);
+  const f32 = (start, count) => new Float32Array(raw.slice(start, start + count * 12).buffer);
+  const off = np + nd;
+  return {
+    sdfProx: i8.slice(0, np),
+    sdfDist: i8.slice(np, off),
+    contactsProx: f32(off, F.contactsProx),
+    contactsDist: f32(off + F.contactsProx * 12, F.contactsDist),
+  };
 }

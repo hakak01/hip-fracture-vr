@@ -33,31 +33,59 @@
   </div>
 
   <div id="pip" title="Tap to enlarge">
-    <div class="shot"><canvas id="pip-ap" width="512" height="512"></canvas></div>
-    <div class="shot"><canvas id="pip-lat" width="512" height="512"></canvas></div>
+    <div class="shot"><canvas id="pip-AP" width="512" height="512"></canvas></div>
+    <div class="shot"><canvas id="pip-LAT" width="512" height="512"></canvas></div>
+    <div class="shot"><canvas id="pip-OBL" width="512" height="512"></canvas></div>
   </div>
 
   <div id="toolbar">
-    <div class="group">
-      <span class="lbl">C-arm</span>
-      <button id="btn-ap" class="big">AP</button>
-      <button id="btn-lat" class="big">Lateral</button>
-      <button id="btn-invert">Invert</button>
-    </div>
-    <div class="group">
-      <span class="lbl">Skin</span>
-      <button id="btn-skin" class="toggle on">On</button>
-      <input id="skin-fade" type="range" min="0" max="100" value="100" aria-label="Skin fade">
-    </div>
-    <div class="group">
-      <span class="lbl">Side</span>
-      <button id="btn-right" class="seg on">Right</button>
-      <button id="btn-left" class="seg">Left</button>
-    </div>
-    <div class="group">
-      <button id="btn-view">Reset view</button>
+    <div class="tabs">
+      <button class="tab on" data-tab="carm">C-arm</button>
+      <button class="tab" data-tab="reduce">Reduce</button>
+      <button class="tab" data-tab="auto">Auto</button>
+      <button class="tab" data-tab="view">View</button>
       <button id="btn-vr" class="vr" hidden>Enter VR</button>
     </div>
+    <div class="pane" data-pane="carm">
+      <button id="btn-ap" class="big">AP</button>
+      <button id="btn-lat" class="big">Lateral</button>
+      <button id="btn-obl" class="big">Oblique 30°</button>
+      <button id="btn-invert">Invert</button>
+    </div>
+    <div class="pane" data-pane="reduce" hidden>
+      <div id="sliders"></div>
+      <div class="row">
+        <button id="btn-release">Release all</button>
+        <span class="readout" id="readout-r"></span>
+      </div>
+    </div>
+    <div class="pane" data-pane="auto" hidden>
+      <div class="row" id="auto-buttons"></div>
+      <div class="row">
+        <button id="btn-restart">Restart fracture</button>
+        <span class="readout" id="readout-a"></span>
+      </div>
+    </div>
+    <div class="pane" data-pane="view" hidden>
+      <div class="row">
+        <span class="lbl">Skin</span>
+        <button id="btn-skin" class="toggle on">On</button>
+        <input id="skin-fade" type="range" min="0" max="100" value="100" aria-label="Skin fade">
+        <span class="lbl">Muscles</span>
+        <button id="btn-muscles" class="toggle on">On</button>
+      </div>
+      <div class="row">
+        <span class="lbl">Side</span>
+        <button id="btn-right" class="seg on">Right</button>
+        <button id="btn-left" class="seg">Left</button>
+        <button id="btn-view">Reset view</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="tune" hidden>
+    <div class="head"><b>Tuning</b> <button id="tune-close" class="link">Close</button></div>
+    <div id="tune-body"></div>
   </div>
 
   <div id="about" hidden>
@@ -70,7 +98,8 @@
         Changed: cropped, resampled, bone and skin surfaces extracted.
         <a href="https://doi.org/10.5281/zenodo.10047292" target="_blank" rel="noopener">doi:10.5281/zenodo.10047292</a></p>
       <p><b>3D engine:</b> three.js (MIT licence).</p>
-      <p class="small">Browser: drag to turn, pinch or scroll to zoom, two fingers to pan. Tap the C-arm screen buttons or use the bar below.</p>
+      <p class="small">Browser: drag to turn, pinch or scroll to zoom, two fingers to pan. Use the tabs at the bottom. Tap the X-ray pictures to enlarge them.</p>
+      <p class="small">Oblique 30° view: Chen SY, Chang SM, et al. BMC Musculoskelet Disord 2020;21:719. <a href="https://doi.org/10.1186/s12891-020-03668-6" target="_blank" rel="noopener">doi:10.1186/s12891-020-03668-6</a></p>
       <button id="btn-about-close" class="big">Close</button>
     </div>
   </div>

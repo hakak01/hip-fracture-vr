@@ -20,7 +20,6 @@ export class Patient {
     this.boneMat = new THREE.MeshStandardMaterial({ color: 0xead9b8, roughness: 0.55, metalness: 0.0 });
     this.skinMat = new THREE.MeshStandardMaterial({ color: 0xd4a088, roughness: 0.62, metalness: 0.0 });
     this.drapeMat = new THREE.MeshStandardMaterial({ color: 0x2c6f8e, roughness: 0.92, metalness: 0.0 });
-    this.depthMat = new THREE.MeshBasicMaterial({ colorWrite: false });
 
     this.local.add(gltf.scene);
     gltf.scene.updateMatrixWorld(true);
@@ -36,7 +35,7 @@ export class Patient {
       this.parts[node.name] = node;
       this.meshes[node.name] = mesh;
     }
-    for (const n of ['pelvis', 'femur_op', 'femur_contra', 'legbones_op', 'legbones_contra']) {
+    for (const n of ['pelvis', 'femur_prox', 'femur_dist', 'femur_contra', 'legbones_op', 'legbones_contra']) {
       if (this.meshes[n]) this.meshes[n].material = this.boneMat;
     }
 
@@ -57,11 +56,11 @@ export class Patient {
       if (!m) continue;
       m.material = mat;
       m.renderOrder = 2;
-      const pre = new THREE.Mesh(m.geometry, this.depthMat);
+      const pre = new THREE.Mesh(m.geometry, new THREE.MeshBasicMaterial({ colorWrite: false }));
       pre.renderOrder = 1;
       pre.visible = false;
       m.add(pre);
-      this.fadeables.push({ mesh: m, pre });
+      this.fadeables.push({ name, mesh: m, pre });
     }
 
     this.buildDrapes(meta);

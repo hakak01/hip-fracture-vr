@@ -9,6 +9,10 @@ const UP = new THREE.Vector3(0, 1, 0);
 
 const smooth = t => t * t * (3 - 2 * t);
 
+// C-arm angle from AP (0) towards the true lateral (90°). The anteromedial oblique view is the
+// true lateral rotated 30° back towards AP (Chen, Chang et al., BMC Musculoskelet Disord 2020;21:719).
+export const VIEW_ALPHA = { AP: 0, OBL: Math.PI / 3, LAT: Math.PI / 2 };
+
 export class CArm {
   constructor() {
     this.root = new THREE.Group();
@@ -108,7 +112,7 @@ export class CArm {
 
   /** Swing to a view. Calls done() when the C-arm is in position. */
   moveTo(view, done) {
-    const to = view === 'LAT' ? Math.PI / 2 : 0;
+    const to = VIEW_ALPHA[view];
     this.view = view;
     if (Math.abs(to - this.alpha) < 1e-4) { this.anim = null; done && done(); return; }
     this.anim = { from: this.alpha, to, t: 0, dur: 1.0 + Math.abs(to - this.alpha) * 0.4, done };
@@ -125,13 +129,14 @@ export class CArm {
 
   /** World-space projection geometry for a view (used by the DRR). */
   projection(view) {
-    const alpha = view === 'LAT' ? Math.PI / 2 : 0;
+    const alpha = VIEW_ALPHA[view];
     const { d } = this.pose(alpha);
     const src = this.iso.clone().addScaledVector(d, -SOD);
     const det = this.iso.clone().addScaledVector(d, SID - SOD);
     let u, v;
-    if (view === 'LAT') {
-      v = UP.clone();
+    if (view !== 'AP') {
+      // lateral and oblique: anterior up, femoral head on the same side as on the AP image
+      v = UP.clone().addScaledVector(d, -UP.dot(d)).normalize();
       u = this.side === 'right' ? this.nm.clone() : this.nm.clone().negate();
     } else {
       u = new THREE.Vector3(1, 0, 0);   // patient's left on the viewer's right

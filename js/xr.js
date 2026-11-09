@@ -18,11 +18,12 @@ export class XRSystem {
    * @param camera the main camera (child of rig)
    * @param getPanels () => array of Panel objects that can be pointed at
    */
-  constructor(renderer, rig, camera, getPanels) {
+  constructor(renderer, rig, camera, getPanels, getGrabbables = () => []) {
     this.renderer = renderer;
     this.rig = rig;
     this.camera = camera;
     this.getPanels = getPanels;
+    this.getGrabbables = getGrabbables;
     this.raycaster = new THREE.Raycaster();
     this.session = null;
     this.snapReady = [true, true];
@@ -43,15 +44,21 @@ export class XRSystem {
       const dot = new THREE.Mesh(dotGeo, dotMat);
       dot.visible = false;
       rig.add(dot);
-      const state = { ctrl, ray, dot, source: null, hit: null, panel: null };
+      const grip = renderer.xr.getControllerGrip(i);
+      const state = { ctrl, grip, ray, dot, source: null, hit: null, panel: null, held: null, heldBy: null, near: null };
       ctrl.addEventListener('connected', e => { state.source = e.data; ray.visible = e.data.targetRayMode !== 'screen'; });
-      ctrl.addEventListener('disconnected', () => { state.source = null; this.leave(i, state); });
+      ctrl.addEventListener('disconnected', () => { state.source = null; this.leave(i, state); this.drop(state); });
       ctrl.addEventListener('selectstart', () => {
         if (state.hit) state.hit.panel.pointerDown(i, state.hit.uv);
+        else if (state.near) this.take(state, 'select');
       });
-      ctrl.addEventListener('selectend', () => { if (state.panel) state.panel.pointerUp(i); });
+      ctrl.addEventListener('selectend', () => {
+        if (state.panel) state.panel.pointerUp(i);
+        if (state.heldBy === 'select') this.drop(state);
+      });
+      ctrl.addEventListener('squeezestart', () => { if (state.near && !state.held) this.take(state, 'squeeze'); });
+      ctrl.addEventListener('squeezeend', () => { if (state.heldBy === 'squeeze') this.drop(state); });
       rig.add(ctrl);
-      const grip = renderer.xr.getControllerGrip(i);
       grip.add(cmf.createControllerModel(grip));
       rig.add(grip);
       const hand = renderer.xr.getHand(i);
@@ -95,11 +102,63 @@ export class XRSystem {
     state.dot.visible = false;
   }
 
+  gripPose(state) {
+    const g = state.grip;
+    g.updateMatrixWorld();
+    const pos = new THREE.Vector3(), quat = new THREE.Quaternion(), sc = new THREE.Vector3();
+    g.matrixWorld.decompose(pos, quat, sc);
+    return { pos, quat };
+  }
+
+  take(state, by) {
+    const g = state.near;
+    if (!g) return;
+    // one hand per object
+    for (const o of this.controllers) if (o !== state && o.held === g) this.drop(o);
+    state.held = g;
+    state.heldBy = by;
+    g.grab(this.gripPose(state));
+    if (state.source && state.source.gamepad && state.source.gamepad.hapticActuators) {
+      try { state.source.gamepad.hapticActuators[0].pulse(0.4, 40); } catch (e) { /* no haptics */ }
+    }
+  }
+
+  drop(state) {
+    if (!state.held) return;
+    const g = state.held;
+    state.held = null;
+    state.heldBy = null;
+    g.release();
+  }
+
+  updateGrabs() {
+    const grabs = this.getGrabbables();
+    const wp = new THREE.Vector3();
+    for (const s of this.controllers) {
+      if (!s.source) continue;
+      const pose = this.gripPose(s);
+      if (s.held) { s.held.move(pose); continue; }
+      let best = null, bd = 1e9;
+      for (const g of grabs) {
+        const d = g.worldPos(wp).distanceTo(pose.pos);
+        if (d < g.radius && d < bd) { bd = d; best = g; }
+      }
+      if (s.near !== best) {
+        if (s.near) s.near.highlight(false);
+        if (best) best.highlight(true);
+        s.near = best;
+      }
+    }
+  }
+
   update(dt) {
+    this.updateGrabs();
     const panels = this.getPanels().filter(p => p.mesh.visible);
     const meshes = panels.map(p => p.mesh);
     this.controllers.forEach((s, i) => {
       if (!s.source) return;
+      s.ray.visible = !s.held && s.source.targetRayMode !== 'screen';
+      if (s.held) { if (s.panel) this.leave(i, s); return; }
       this.raycaster.setFromXRController(s.ctrl);
       const hits = this.raycaster.intersectObjects(meshes, false);
       const h = hits[0];

@@ -17,7 +17,7 @@ const fragmentShader = /* glsl */`
   precision highp float;
   precision highp sampler3D;
   uniform sampler3D uVol;   // r: static attenuation (HU-coded), g: moving-bone excess
-  uniform sampler3D uLab;   // r: label id
+  uniform sampler3D uMemb;  // r: proximal fragment membership, g: distal (linear filtered = smooth edges)
   uniform vec3 uCorner;
   uniform vec3 uSize;
   uniform vec3 uSrc;
@@ -64,10 +64,9 @@ const fragmentShader = /* glsl */`
           vec3 q = (uFragInv[k] * vec4(p, 1.0)).xyz;
           vec3 tq = (q - uCorner) / uSize;
           if (all(greaterThanEqual(tq, vec3(0.0))) && all(lessThanEqual(tq, vec3(1.0)))) {
-            float lab = texture(uLab, tq).r * 255.0;
-            if (abs(lab - uFragLab[k]) < 0.5) {
-              mu += uMuW * uBoneGain * texture(uVol, tq).g * 3.06;
-            }
+            vec2 mm = texture(uMemb, tq).rg;
+            float w = k == 0 ? mm.r : mm.g;
+            if (w > 0.0) mu += w * uMuW * uBoneGain * texture(uVol, tq).g * 3.06;
           }
         }
         L += mu * uStep;
@@ -116,17 +115,24 @@ export class DRR {
     vol.minFilter = vol.magFilter = THREE.LinearFilter;
     vol.unpackAlignment = 1;
     vol.needsUpdate = true;
-    const lab = new THREE.Data3DTexture(volume.label, nx, ny, nz);
-    lab.format = THREE.RedFormat;
+    // fragment membership (0/255) per voxel, linearly filtered so moved fragments have smooth edges
+    const memb = new Uint8Array(n * 2);
+    const lp = vm.labels.proximal, ld = vm.labels.distal, labels = volume.label;
+    for (let i = 0; i < n; i++) {
+      if (labels[i] === lp) memb[2 * i] = 255;
+      else if (labels[i] === ld) memb[2 * i + 1] = 255;
+    }
+    const lab = new THREE.Data3DTexture(memb, nx, ny, nz);
+    lab.format = THREE.RGFormat;
     lab.type = THREE.UnsignedByteType;
-    lab.minFilter = lab.magFilter = THREE.NearestFilter;
+    lab.minFilter = lab.magFilter = THREE.LinearFilter;
     lab.unpackAlignment = 1;
     lab.needsUpdate = true;
 
     const sp = vm.spacing;
     this.uniforms = {
       uVol: { value: vol },
-      uLab: { value: lab },
+      uMemb: { value: lab },
       uCorner: { value: new THREE.Vector3().fromArray(vm.corner) },
       uSize: { value: new THREE.Vector3(nx * sp, ny * sp, nz * sp) },
       uSrc: { value: new THREE.Vector3() },
@@ -138,10 +144,13 @@ export class DRR {
       uBoneGain: { value: 3.0 },
       uNFrag: { value: 1 },
       uFragInv: { value: Array.from({ length: MAX_FRAGS }, () => new THREE.Matrix4()) },
-      uFragLab: { value: [vm.labels.femurOp, 0, 0, 0] },
+      uFragLab: { value: [vm.labels.proximal, vm.labels.distal, 0, 0] },
     };
-    // Fragments: label id + world-independent transform in the patient frame (mm).
-    this.fragments = [{ label: vm.labels.femurOp, matrix: new THREE.Matrix4() }];
+    // Fragments: label id + rigid transform in the patient frame (mm), set from the physics.
+    this.fragments = [
+      { label: vm.labels.proximal, matrix: new THREE.Matrix4() },
+      { label: vm.labels.distal, matrix: new THREE.Matrix4() },
+    ];
 
     this.material = new THREE.ShaderMaterial({
       glslVersion: THREE.GLSL3, uniforms: this.uniforms, vertexShader, fragmentShader,
@@ -165,7 +174,7 @@ export class DRR {
       this.noise[i] = Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(2 * Math.PI * Math.random());
     }
     this.canvases = {};
-    for (const v of ['AP', 'LAT']) {
+    for (const v of ['AP', 'LAT', 'OBL']) {
       const c = document.createElement('canvas');
       c.width = c.height = SIZE;
       const g = c.getContext('2d');
@@ -292,7 +301,7 @@ export class DRR {
     ctx.font = '600 26px system-ui, sans-serif';
     ctx.textBaseline = 'top';
     ctx.textAlign = 'left';
-    ctx.fillText(view === 'AP' ? 'AP' : 'LAT', 14, 12);
+    ctx.fillText({ AP: 'AP', LAT: 'LAT', OBL: 'OBL 30°' }[view], 14, 12);
     ctx.textAlign = 'right';
     ctx.font = '700 40px system-ui, sans-serif';
     ctx.fillText(this.sideLetter, W - 16, 10);

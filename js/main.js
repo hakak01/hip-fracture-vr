@@ -1,4 +1,4 @@
-// Hip Fracture VR Trainer — milestone 1: scene, CT anatomy, skin, side choice, C-arm with DRR, VR.
+// Hip Fracture VR Trainer — milestone 2: fracture, muscle springs, reduction controls, Auto-reduce.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { loadAssets } from './assets.js';
@@ -10,11 +10,16 @@ import { Monitor } from './monitor.js';
 import { Panel } from './panel.js';
 import { XRSystem, vrSupported } from './xr.js';
 import { HUD } from './hud.js';
+import { FractureSim } from './physics.js';
+import { FractureView } from './fracture.js';
+import { Reducer } from './reduce.js';
+import { Tools } from './tools.js';
+import { Tuning } from './tuning.js';
 
 const ASSETS = 'assets/ct/';
 
 const app = {
-  state: { side: 'right', skinOn: true, skinOpacity: 1, invert: false, busy: null, live: null, inVR: false },
+  state: { side: 'right', skinOn: true, skinOpacity: 1, invert: false, busy: null, live: null, inVR: false, muscles: true },
 };
 const hud = new HUD(app);
 
@@ -57,7 +62,8 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-let patient, carm, drr, monitor, controlPanel, xr;
+let patient, carm, drr, monitor, controlPanel, reductionPanel, xr, sim, fracView, reducer, tools, tuning;
+let shootAfterSettle = 0; // seconds of settling left before automatic AP/LAT shots
 const sideSign = () => (app.state.side === 'right' ? 1 : -1);
 
 // ---------- app actions (shared by the HTML bar and the VR panels) ----------
@@ -69,6 +75,8 @@ app.shoot = view => {
   refresh();
   carm.moveTo(view, () => {
     carm.beam.visible = true;
+    sim.matrixP(drr.fragments[0].matrix);
+    sim.matrixD(drr.fragments[1].matrix);
     drr.shoot(view, projectionLocal(view));
   });
 };
@@ -96,7 +104,7 @@ app.toggleInvert = () => {
   app.state.invert = !app.state.invert;
   drr.invert = app.state.invert;
   drr.reprocess();
-  for (const v of ['AP', 'LAT']) {
+  for (const v of ['AP', 'LAT', 'OBL']) {
     monitor.screens[v].tex.needsUpdate = true;
     hud.showImage(v, drr.canvases[v], app.state.live);
   }
@@ -137,13 +145,55 @@ function applySide() {
   // VR: stand lateral to the operated hip, facing the patient
   xr.setHome(new THREE.Vector3(-0.7 * s, 0, 0.1), s > 0 ? -Math.PI / 2 : Math.PI / 2);
   if (renderer.xr.isPresenting) xr.goHome();
-  controlPanel.mesh.position.set(-0.85 * s, 1.12, 0.62);
-  controlPanel.mesh.lookAt(-0.6 * s, 1.75, 0.05);
+  for (const [panel, z] of [[controlPanel, 0.85], [reductionPanel, -0.62]]) {
+    panel.mesh.position.set(-0.95 * s, 1.15, z);
+    panel.mesh.lookAt(-0.6 * s, 1.75, 0.08);
+  }
+  tools.place(s);
   queue.length = 0;
-  app.shoot('LAT');
-  app.shoot('AP');
+  shootAll();
   if (!renderer.xr.isPresenting) app.resetView();
 }
+
+function shootAll() {
+  app.shoot('OBL');
+  app.shoot('LAT');
+  app.shoot('AP');
+}
+
+app.setMuscles = on => {
+  app.state.muscles = on;
+  fracView.setMusclesVisible(on);
+  refresh();
+};
+
+app.setSlider = (id, v) => reducer.setSlider(id, v);
+
+app.releaseAll = () => {
+  reducer.releaseAll();
+  hud.resetSliders();
+  refresh();
+};
+
+app.freeLeg = () => { sim.releaseFoot(); reducer.ref = null; refresh(); };
+app.freePin = () => { sim.releasePin(); reducer.ref = null; refresh(); };
+
+app.autoReduce = kind => {
+  hud.resetSliders();
+  reducer.autoReduce(kind);
+  app.state.autoKind = kind;
+  refresh();
+};
+
+app.restartFracture = () => {
+  reducer.releaseAll();
+  hud.resetSliders();
+  sim.reset();
+  shootAfterSettle = 5;
+  refresh();
+};
+
+app.toggleTuning = () => tuning.toggle();
 
 app.resetView = () => {
   const s = sideSign();
@@ -164,7 +214,14 @@ app.exitVR = () => xr.exit();
 function refresh() {
   hud.refresh();
   if (controlPanel) controlPanel.draw();
+  if (reductionPanel) reductionPanel.draw();
   if (monitor) monitor.panel.draw();
+}
+
+function readoutText(m) {
+  const status = reducer.status ? ` · ${reducer.status}` : '';
+  return `Neck–shaft ${m.nsa.toFixed(0)}° (varus ${m.varus.toFixed(0)}°) · shortening ${m.shortening.toFixed(0)} mm · ` +
+    `rotation ${m.rotation >= 0 ? 'ext' : 'int'} ${Math.abs(m.rotation).toFixed(0)}° · sag ${m.sag.toFixed(0)} mm · AM support: ${m.amcs}${status}`;
 }
 
 // ---------- VR control panel ----------
@@ -173,9 +230,10 @@ function makeControlPanel() {
     width: 0.56, height: 0.4, title: 'Controls',
     items: [
       { type: 'label', x: 22, y: 52, w: 200, h: 24, label: 'C-arm', size: 22, color: '#9fb3ba' },
-      { type: 'button', x: 20, y: 78, w: 160, h: 66, label: 'AP', onPress: () => app.shoot('AP'), active: () => app.state.busy === 'AP' },
-      { type: 'button', x: 190, y: 78, w: 200, h: 66, label: 'LATERAL', onPress: () => app.shoot('LAT'), active: () => app.state.busy === 'LAT' },
-      { type: 'button', x: 400, y: 78, w: 140, h: 66, label: 'Invert', size: 28, onPress: () => app.toggleInvert(), active: () => app.state.invert },
+      { type: 'button', x: 20, y: 78, w: 110, h: 66, label: 'AP', onPress: () => app.shoot('AP'), active: () => app.state.busy === 'AP' },
+      { type: 'button', x: 140, y: 78, w: 120, h: 66, label: 'LAT', onPress: () => app.shoot('LAT'), active: () => app.state.busy === 'LAT' },
+      { type: 'button', x: 270, y: 78, w: 150, h: 66, label: 'OBL 30°', size: 28, onPress: () => app.shoot('OBL'), active: () => app.state.busy === 'OBL' },
+      { type: 'button', x: 430, y: 78, w: 110, h: 66, label: 'Invert', size: 26, onPress: () => app.toggleInvert(), active: () => app.state.invert },
       { type: 'label', x: 22, y: 152, w: 200, h: 24, label: 'Skin', size: 22, color: '#9fb3ba' },
       { type: 'button', x: 20, y: 178, w: 160, h: 62, label: () => (app.state.skinOn ? 'Skin ON' : 'Skin OFF'), size: 28, onPress: () => app.setSkinOn(!app.state.skinOn), active: () => app.state.skinOn },
       { type: 'slider', x: 210, y: 200, w: 330, h: 26, label: 'Fade', value: () => app.state.skinOpacity, onChange: v => app.setSkinOpacity(v) },
@@ -186,6 +244,68 @@ function makeControlPanel() {
       { type: 'button', x: 290, y: 334, w: 250, h: 52, label: 'Exit VR', size: 28, color: '#7a2b25', onPress: () => app.exitVR() },
     ],
   });
+}
+
+function makeReductionPanel() {
+  const auto = [['good', 'Good'], ['varus', 'Varus'], ['sag', 'Sag'], ['gap', 'Gap']];
+  return new Panel({
+    width: 0.56, height: 0.42, title: 'Reduction',
+    items: [
+      { type: 'label', x: 22, y: 50, w: 520, h: 26, size: 20, color: '#9fb3ba', label: 'Grip button: boot = foot, blue T-handle = pin, tray = tools' },
+      { type: 'button', x: 20, y: 84, w: 255, h: 58, label: 'Free leg', size: 28, onPress: () => app.freeLeg(), active: () => sim.footHold.active },
+      { type: 'button', x: 285, y: 84, w: 255, h: 58, label: 'Free pin', size: 28, onPress: () => app.freePin(), active: () => sim.pinHold.active },
+      { type: 'label', x: 22, y: 150, w: 300, h: 24, size: 22, color: '#9fb3ba', label: 'Auto-reduce' },
+      ...auto.map(([id, label], i) => ({ type: 'button', x: 20 + i * 132, y: 176, w: 124, h: 58, label, size: 26,
+        onPress: () => app.autoReduce(id), active: () => !!reducer.anim && reducer.anim.kind === id })),
+      { type: 'button', x: 20, y: 244, w: 255, h: 56, label: 'Restart fracture', size: 26, onPress: () => app.restartFracture() },
+      { type: 'button', x: 285, y: 244, w: 255, h: 56, label: () => (app.state.muscles ? 'Muscles ON' : 'Muscles OFF'), size: 26,
+        onPress: () => app.setMuscles(!app.state.muscles), active: () => app.state.muscles },
+      { type: 'label', x: 22, y: 312, w: 520, h: 30, size: 21, color: '#ffe08a', label: () => app.readout1 || '' },
+      { type: 'label', x: 22, y: 346, w: 520, h: 30, size: 21, color: '#ffe08a', label: () => app.readout2 || '' },
+      { type: 'label', x: 22, y: 380, w: 520, h: 30, size: 21, color: '#c8d8dc', label: () => reducer.status || '' },
+    ],
+  });
+}
+
+/** controller pose (world) -> patient frame (mm), handling the mirror for a left hip */
+function poseLocal(pose) {
+  const pos = patient.toLocal(pose.pos);
+  const q = pose.quat.clone();
+  if (app.state.side === 'left') { q.y = -q.y; q.z = -q.z; }
+  return { pos, q };
+}
+
+function makeGrabbables() {
+  const foot = {
+    id: 'foot', radius: 0.16,
+    worldPos: out => fracView.worldPoint('D', fracView.footHandle, out),
+    grab: pose => {
+      reducer.anim = null; reducer.ref = null; hud.resetSliders();
+      const c = poseLocal(pose);
+      const qi = c.q.clone().invert();
+      foot.start = { off: sim.D.pos.clone().sub(c.pos).applyQuaternion(qi), qoff: qi.multiply(sim.D.q.clone()) };
+    },
+    move: pose => {
+      const c = poseLocal(pose);
+      const pos = foot.start.off.clone().applyQuaternion(c.q).add(c.pos);
+      sim.holdFoot(pos, c.q.clone().multiply(foot.start.qoff), 0.02);
+    },
+    release: () => { refresh(); }, // the boot keeps the foot where it was let go
+    highlight: on => fracView.setHighlight('foot', on),
+  };
+  const pin = {
+    id: 'pin', radius: 0.1,
+    worldPos: out => fracView.worldPoint('P', fracView.pinHandle, out),
+    grab: pose => {
+      reducer.anim = null; reducer.ref = null; hud.resetSliders();
+      const c = poseLocal(pose);
+      pin.start = { qoff: c.q.clone().invert().multiply(sim.P.q.clone()) };
+    },
+    move: pose => sim.holdPin(poseLocal(pose).q.multiply(pin.start.qoff), 0.02),
+    release: () => { refresh(); }, // an assistant keeps holding the pin
+    highlight: on => fracView.setHighlight('pin', on),
+  };
+  return [foot, pin, ...tools.grabbables()];
 }
 
 // ---------- browser taps on 3D panels / monitor screens ----------
@@ -201,7 +321,7 @@ function setupPointer() {
     if (moved > 8 || !quick) return;
     const ndc = new THREE.Vector2((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
     ray.setFromCamera(ndc, camera);
-    const targets = [monitor.panel.mesh, monitor.screens.AP.mesh, monitor.screens.LAT.mesh];
+    const targets = [monitor.panel.mesh, monitor.screens.AP.mesh, monitor.screens.LAT.mesh, monitor.screens.OBL.mesh];
     const hit = ray.intersectObjects(targets, false)[0];
     if (!hit) return;
     if (hit.object.userData.panel) {
@@ -229,11 +349,23 @@ async function start() {
   drr.onImage = imageDone;
   monitor = new Monitor(drr.canvases, app);
   scene.add(monitor.root);
-  controlPanel = makeControlPanel();
-  controlPanel.mesh.visible = false;
-  scene.add(controlPanel.mesh);
+  sim = new FractureSim(assets.meta, assets.fracture);
+  reducer = new Reducer(sim);
+  tuning = new Tuning(app, sim);
+  fracView = new FractureView(patient, sim);
+  tools = new Tools();
+  scene.add(tools.root);
+  hud.setProgress(0.96, 'Letting the muscles displace the fracture…');
+  await new Promise(r => setTimeout(r, 30));
+  sim.settle(5);
+  fracView.update();
 
-  xr = new XRSystem(renderer, rig, camera, () => [monitor.panel, controlPanel]);
+  controlPanel = makeControlPanel();
+  reductionPanel = makeReductionPanel();
+  for (const p of [controlPanel, reductionPanel]) { p.mesh.visible = false; scene.add(p.mesh); }
+
+  const grabbables = makeGrabbables();
+  xr = new XRSystem(renderer, rig, camera, () => [monitor.panel, controlPanel, reductionPanel], () => grabbables);
   let savedCam = null;
   xr.onStart = () => {
     app.state.inVR = true;
@@ -241,6 +373,7 @@ async function start() {
     controls.enabled = false;
     hud.setVisible(false);
     controlPanel.mesh.visible = true;
+    reductionPanel.mesh.visible = true;
     xr.goHome();
   };
   xr.onEnd = () => {
@@ -248,6 +381,8 @@ async function start() {
     rig.position.set(0, 0, 0);
     rig.rotation.set(0, 0, 0);
     controlPanel.mesh.visible = false;
+    reductionPanel.mesh.visible = false;
+    for (const it of tools.items) if (it.held) tools.goHome(it);
     hud.setVisible(true);
     controls.enabled = true;
     if (savedCam) {
@@ -268,10 +403,35 @@ async function start() {
   hud.hideLoading();
 
   const clock = new THREE.Clock();
+  let readT = 0, wasAnim = false;
   renderer.setAnimationLoop(() => {
     const dt = Math.min(clock.getDelta(), 0.1);
     if (renderer.xr.isPresenting) xr.update(dt);
     else controls.update();
+    // physics
+    sim.tools = tools.tips(patient);
+    reducer.update(dt);
+    sim.update(dt);
+    fracView.update();
+    if (wasAnim && !reducer.anim) { app.shoot('LAT'); app.shoot('AP'); }
+    wasAnim = !!reducer.anim;
+    if (shootAfterSettle > 0) {
+      shootAfterSettle -= dt;
+      if (shootAfterSettle <= 0) shootAll();
+    }
+    // numbers for the panels a few times per second
+    readT -= dt;
+    if (readT <= 0) {
+      readT = 0.25;
+      const m = sim.measures();
+      const t = readoutText(m);
+      hud.readout(t);
+      const cut = t.indexOf(' · rotation');
+      app.readout1 = t.slice(0, cut);
+      app.readout2 = t.slice(cut + 3).replace(/ · (Reducing…|.*held)$/, '');
+      tuning.refresh(m);
+      if (reductionPanel.mesh.visible) reductionPanel.draw();
+    }
     carm.update(dt);
     drr.tick();
     renderer.render(scene, camera);
@@ -287,4 +447,5 @@ start().catch(err => {
 window.__app = app;
 Object.defineProperty(window, "__drr", { get: () => drr });
 Object.defineProperty(window, "__patient", { get: () => patient });
-Object.defineProperty(window, "__vr", { get: () => ({ rig, controlPanel, monitor, renderer }) });
+Object.defineProperty(window, "__vr", { get: () => ({ rig, controlPanel, reductionPanel, monitor, renderer, fracView, tools, camera, controls }) });
+Object.defineProperty(window, "__sim", { get: () => sim });

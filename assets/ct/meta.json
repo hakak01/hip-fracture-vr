@@ -86,20 +86,232 @@
   "softHU": 30,
   "labels": {
    "pelvis": 1,
-   "femurOp": 2,
-   "femurContra": 3
+   "proximal": 2,
+   "femurContra": 3,
+   "distal": 4
   }
  },
  "meshes": {
   "file": "anatomy.glb",
   "names": [
    "pelvis",
-   "femur_op",
+   "femur_prox",
+   "femur_dist",
    "femur_contra",
    "legbones_op",
    "legbones_contra",
    "skin",
    "well_leg"
+  ]
+ },
+ "fracture": {
+  "type": "AO/OTA 31A1 two-part pertrochanteric (lateral wall intact, lesser trochanter on distal fragment)",
+  "file": "fracture.bin.gz",
+  "normal": [
+   0.65,
+   -0.0,
+   -0.76
+  ],
+  "point": [
+   -107.09,
+   -21.19,
+   21.24
+  ],
+  "fxLat": [
+   -128.09,
+   -27.94,
+   3.24
+  ],
+  "fxMed": [
+   -86.09,
+   -14.44,
+   39.24
+  ],
+  "sdfStep": 2.0,
+  "sdfUnit": 0.5,
+  "sdfProx": {
+   "origin": [
+    -144.09,
+    -61.94,
+    -32.26
+   ],
+   "dims": [
+    52,
+    51,
+    45
+   ]
+  },
+  "sdfDist": {
+   "origin": [
+    -150.09,
+    -58.94,
+    -11.26
+   ],
+   "dims": [
+    44,
+    54,
+    116
+   ]
+  },
+  "contactsProx": 700,
+  "contactsDist": 700,
+  "layout": "int8 sdf prox (x-fastest), int8 sdf dist, float32 xyz contact points prox, dist"
+ },
+ "bodies": {
+  "proximal": {
+   "mass": 0.091,
+   "com": [
+    -89.87,
+    -7.78,
+    7.15
+   ],
+   "pivot": [
+    -78.31,
+    1.95,
+    3.09
+   ]
+  },
+  "distal": {
+   "mass": 13.0,
+   "com": [
+    -100.17,
+    2.07,
+    276.59
+   ],
+   "inertia": [
+    [
+     447253.18,
+     1341.35,
+     -10549.64
+    ],
+    [
+     1341.35,
+     444347.12,
+     30293.49
+    ],
+    [
+     -10549.64,
+     30293.49,
+     58648.36
+    ]
+   ]
+  }
+ },
+ "attach": {
+  "asis": [
+   -114.59,
+   54.56,
+   -59.76
+  ],
+  "aiis": [
+   -111.59,
+   51.56,
+   -41.76
+  ],
+  "iliumOuter": [
+   -113.09,
+   6.56,
+   -95.76
+  ],
+  "iliumLower": [
+   -125.09,
+   47.06,
+   -56.76
+  ],
+  "ischialTub": [
+   -48.59,
+   -27.94,
+   63.24
+  ],
+  "ischialSpine": [
+   -47.09,
+   -47.44,
+   7.74
+  ],
+  "pubicBody": [
+   -23.09,
+   50.06,
+   33.24
+  ],
+  "ischiopubic": [
+   -38.09,
+   -18.94,
+   61.74
+  ],
+  "iliopectineal": [
+   -53.09,
+   21.56,
+   -4.26
+  ],
+  "sacrumAnt": [
+   -51.59,
+   -17.44,
+   -71.76
+  ],
+  "lt": [
+   -84.59,
+   -18.94,
+   54.24
+  ],
+  "gtTip": [
+   -120.59,
+   -27.94,
+   -5.76
+  ],
+  "fxLat": [
+   -128.09,
+   -27.94,
+   3.24
+  ],
+  "fxMed": [
+   -86.09,
+   -14.44,
+   39.24
+  ],
+  "gtLatFacet": [
+   -123.59,
+   -32.44,
+   -1.26
+  ],
+  "gtAntFacet": [
+   -117.59,
+   -9.94,
+   0.24
+  ],
+  "trochFossa": [
+   -108.59,
+   -38.44,
+   1.74
+  ],
+  "lineaAspera": [
+   -111.59,
+   -0.94,
+   163.74
+  ],
+  "adductorTubercle": [
+   -78.59,
+   29.06,
+   345.24
+  ],
+  "tibialTub": [
+   -105.59,
+   35.06,
+   408.24
+  ],
+  "tibiaPost": [
+   -126.59,
+   -14.44,
+   400.74
+  ],
+  "heel": [
+   -60.59,
+   -86.44,
+   717.24
+  ],
+  "foot": [
+   -78.17,
+   -36.61,
+   750.04
   ]
  }
 }

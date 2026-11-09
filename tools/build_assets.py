@@ -25,6 +25,9 @@ import scipy.ndimage as ndi
 import trimesh
 from skimage import measure
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import fracture as fx  # noqa: E402
+
 SP = 1.5  # voxel size (mm) of the dataset
 
 
@@ -170,6 +173,17 @@ def main(case, out, tmp):
     _, _, vt = np.linalg.svd(dia_l - dia_l.mean(0), full_matrices=False)
     shaft_l = vt[0] if vt[0][2] > 0 else -vt[0]
 
+    # ---------- AO 31A1 fracture of the operated femur ----------
+    FL = fx.femur_landmarks(pr, hc_r, (cen, shaft))
+    ffun, fnorm, fp0 = fx.fracture_field(FL["fxLat"], FL["fxMed"])
+    to_mm = lambda idx: idx * SP + vox_origin
+    fem_p, fem_d = fx.split(fem_r, to_mm, ffun)
+    print("fragments: proximal %d, distal %d voxels; LT side f=%.1f" % (fem_p.sum(), fem_d.sum(), ffun(FL["lt"][None])[0]))
+    for k in ("gtTip", "gtLatFacet", "gtAntFacet", "trochFossa"):
+        assert ffun(FL[k][None])[0] > 0, k + " must be on the proximal fragment"
+    assert ffun(FL["lt"][None])[0] < 0, "lesser trochanter must stay with the distal fragment"
+    PL = fx.pelvis_landmarks(coords(seg("hip_right") > 0), coords(seg("sacrum") > 0), hc_r)
+
     # ---------- body (skin) ----------
     body = ct > -500
     body = ndi.binary_opening(body, ball(2))
@@ -242,7 +256,8 @@ def main(case, out, tmp):
     # ---------- meshes ----------
     meshes = {}
     meshes["pelvis"] = mesh_from_mask(pelvis, vox_origin, 70000)
-    meshes["femur_op"] = mesh_from_mask(fem_r, vox_origin, 40000)
+    meshes["femur_prox"] = mesh_from_mask(fem_p, vox_origin, 16000, sigma=0.8)
+    meshes["femur_dist"] = mesh_from_mask(fem_d, vox_origin, 36000, sigma=0.8)
     meshes["femur_contra"] = mesh_from_mask(fem_l, vox_origin, 22000)
     meshes["legbones_op"] = mesh_from_mask(leg_r, vox_origin, 30000, sigma=0.9)
     meshes["legbones_contra"] = mesh_from_mask(leg_l, vox_origin, 16000, sigma=0.9)
@@ -269,7 +284,9 @@ def main(case, out, tmp):
     lab_e[PAD:-PAD][pelvis] = 1
     lab_e[PAD:-PAD][fem_l] = 3
     fz = ndi.binary_dilation(fem_r, ball(1)) & ~pelvis  # 1-voxel margin, never into the acetabulum
-    lab_e[PAD:-PAD][fz] = 2
+    fzp, fzd = fx.split(fz, to_mm, ffun)
+    lab_e[PAD:-PAD][fzp] = 2  # proximal fragment
+    lab_e[PAD:-PAD][fzd] = 4  # distal fragment
 
     lo = hc_r + np.array([-200.0, 0, -175])
     hi = hc_r + np.array([140.0, 0, 245])
@@ -280,7 +297,7 @@ def main(case, out, tmp):
     j0, j1 = max(0, js.min() - 3), min(shape[1], js.max() + 4)
     crop = (slice(i0, i1), slice(j0, j1), slice(k0, k1))
     H = hu_e[crop]; L = lab_e[crop]
-    femz = L == 2
+    femz = (L == 2) | (L == 4)
     excess = np.where(femz, np.maximum(H - 30.0, 0), 0)
     base = np.where(femz, 30.0, H)
     # light smoothing of soft tissue only (less noise, better compression)
@@ -312,6 +329,32 @@ def main(case, out, tmp):
     sym = pp[np.abs(pp[:, 0]) < 25]
     crotch_z = sym[:, 2].max() + 25
     print("crotch z", crotch_z)
+
+    # ---------- fracture contact data: signed distance grids + contact sample points ----------
+    pp_ = coords(fem_p)
+    box_p = (pp_.min(0) - 16, pp_.max(0) + 16)
+    pd_ = coords(fem_d)
+    pd_top = pd_[pd_[:, 2] < FL["lt"][2] + 150]
+    box_d = (pd_top.min(0) - 16, pd_top.max(0) + 16)
+    sdf_p, n_p, st = fx.sdf_grid(fem_p, vox_origin, SP, *box_p)
+    sdf_d, n_d, _ = fx.sdf_grid(fem_d, vox_origin, SP, *box_d)
+    cp_p = fx.contact_points(fem_p, fem_d, to_mm, ffun, seed=1)
+    cp_d = fx.contact_points(fem_d, fem_p, to_mm, ffun, seed=2)
+    q8 = lambda a: np.clip(np.round(a / 0.5), -127, 127).astype(np.int8)
+    tr = lambda a: np.ascontiguousarray(a.transpose(2, 1, 0))  # x-fastest
+    fblob = tr(q8(sdf_p)).tobytes() + tr(q8(sdf_d)).tobytes() + cp_p.tobytes() + cp_d.tobytes()
+    with gzip.open(f"{out}/fracture.bin.gz", "wb", compresslevel=9) as fh:
+        fh.write(fblob)
+    print("fracture.bin.gz", os.path.getsize(f"{out}/fracture.bin.gz") // 1024, "KB", n_p, n_d, len(cp_p), len(cp_d))
+
+    # operated leg (distal body): landmarks and mass properties from the skin volume below the LT
+    ex_idx = np.argwhere(main_skin)
+    ex_pts = ex_idx * SP + ext_origin
+    legpts = ex_pts[(ex_pts[:, 0] < -5) & (ex_pts[:, 2] > FL["lt"][2])]
+    LL = fx.leg_landmarks(coords(leg_r), legpts, knee_r)
+    m_d, com_d, I_d = fx.mass_props(legpts, SP ** 3)
+    m_p, com_p, _ = fx.mass_props(pp_, SP ** 3, density=1.4e-6)
+    print("distal body mass %.1f kg, COM %s; proximal %.2f kg" % (m_d, com_d.round(1), m_p))
 
     zs = np.where(body.any((0, 1)))[0]
     top_k = zs.min()
@@ -347,9 +390,24 @@ def main(case, out, tmp):
             "file": "volume.bin.gz", "dims": [int(s) for s in qb.shape], "spacing": vol_sp,
             "corner": r3(vol_corner), "layout": "planar uint8 x-fastest: base(delta), excess(delta), label",
             "huScale": 12, "huOffset": -1000, "softHU": 30,
-            "labels": {"pelvis": 1, "femurOp": 2, "femurContra": 3},
+            "labels": {"pelvis": 1, "proximal": 2, "femurContra": 3, "distal": 4},
         },
         "meshes": {"file": "anatomy.glb", "names": list(meshes.keys())},
+        "fracture": {
+            "type": "AO/OTA 31A1 two-part pertrochanteric (lateral wall intact, lesser trochanter on distal fragment)",
+            "file": "fracture.bin.gz", "normal": r3(fnorm), "point": r3(fp0),
+            "fxLat": r3(FL["fxLat"]), "fxMed": r3(FL["fxMed"]),
+            "sdfStep": st, "sdfUnit": 0.5,
+            "sdfProx": {"origin": r3(box_p[0]), "dims": [int(v) for v in n_p]},
+            "sdfDist": {"origin": r3(box_d[0]), "dims": [int(v) for v in n_d]},
+            "contactsProx": len(cp_p), "contactsDist": len(cp_d),
+            "layout": "int8 sdf prox (x-fastest), int8 sdf dist, float32 xyz contact points prox, dist",
+        },
+        "bodies": {
+            "proximal": {"mass": round(float(m_p), 3), "com": r3(com_p), "pivot": r3(hc_r)},
+            "distal": {"mass": round(float(m_d), 2), "com": r3(com_d), "inertia": [r3(r) for r in I_d]},
+        },
+        "attach": {k: r3(v) for k, v in {**PL, **{k: FL[k] for k in FL if isinstance(FL[k], np.ndarray)}, **LL}.items()},
     }
     json.dump(meta, open(f"{out}/meta.json", "w"), indent=1)
     print(json.dumps(meta["landmarks"], indent=1))
