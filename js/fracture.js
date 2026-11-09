@@ -54,6 +54,11 @@ export class FractureView {
     g.add(rod, chuck, bar);
     this.P.add(g);
     this.pinHandle = bar.position.clone(); // rest-frame grab point
+    // steel parts that show on the X-ray (the T-handle is plastic)
+    this.pinMetal = [
+      { a: tip.clone(), b: tip.clone().addScaledVector(dir, len), r: 2.5 },
+      { a: tip.clone().addScaledVector(dir, len - 29), b: tip.clone().addScaledVector(dir, len + 5), r: 9 },
+    ];
     this.pin = g;
   }
 

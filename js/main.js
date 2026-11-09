@@ -1,4 +1,4 @@
-// Hip Fracture VR Trainer — milestone 2: fracture, muscle springs, reduction controls, Auto-reduce.
+// Hip Fracture VR Trainer — milestone 3: movable C-arm, DHS guidewire, scoring.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { loadAssets } from './assets.js';
@@ -15,13 +15,20 @@ import { FractureView } from './fracture.js';
 import { Reducer } from './reduce.js';
 import { Tools } from './tools.js';
 import { Tuning } from './tuning.js';
+import { DHS, WIRE_LEN, BARREL } from './dhs.js';
+import { Sounds } from './audio.js';
+import { scoreWire, scoreLines } from './score.js';
 
 const ASSETS = 'assets/ct/';
 
 const app = {
-  state: { side: 'right', skinOn: true, skinOpacity: 1, invert: false, busy: null, live: null, inVR: false, muscles: true },
+  state: { side: 'right', skinOn: true, skinOpacity: 1, invert: false, busy: null, live: null, inVR: false, muscles: true,
+    laser: true, shots: 0, seconds: 0, drill: 0 },
+  scoreText: [],
 };
 const hud = new HUD(app);
+const sounds = new Sounds();
+for (const ev of ['pointerdown', 'keydown']) window.addEventListener(ev, () => sounds.unlock(), { capture: true });
 
 // ---------- renderer, scene, camera ----------
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -62,49 +69,79 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-let patient, carm, drr, monitor, controlPanel, reductionPanel, xr, sim, fracView, reducer, tools, tuning;
+let patient, carm, drr, monitor, controlPanel, reductionPanel, xr, sim, fracView, reducer, tools, tuning, dhs;
+let frameDt = 1 / 60;
+let drillingNow = false;
 let shootAfterSettle = 0; // seconds of settling left before automatic AP/LAT shots
 const sideSign = () => (app.state.side === 'right' ? 1 : -1);
 
 // ---------- app actions (shared by the HTML bar and the VR panels) ----------
 const queue = [];
+/** X-ray. With a preset ('AP', 'LAT', 'OBL') the C-arm first swings there; without, it shoots where it is. */
 app.shoot = view => {
   if (!drr) return;
-  if (app.state.busy) { if (!queue.includes(view)) queue.push(view); return; }
-  app.state.busy = view;
+  const key = view || 'HERE';
+  if (app.state.busy) { if (!queue.includes(key)) queue.push(key); return; }
+  app.state.busy = key;
   refresh();
-  carm.moveTo(view, () => {
-    carm.beam.visible = true;
-    sim.matrixP(drr.fragments[0].matrix);
-    sim.matrixD(drr.fragments[1].matrix);
-    drr.shoot(view, projectionLocal(view));
-  });
+  if (key === 'HERE') expose();
+  else carm.moveTo(key, expose);
 };
 
-function projectionLocal(view) {
-  const p = carm.projection(view);
+function expose() {
+  app.state.shots++;
+  app.state.seconds += 0.4;
+  sounds.beep();
+  carm.beam.visible = true;
+  sim.matrixP(drr.fragments[0].matrix);
+  sim.matrixD(drr.fragments[1].matrix);
+  const p = projectionLocal();
+  drr.shoot(p.screen, p, collectMetal(), {
+    label: carm.viewName(), angles: carm.angleText(), count: app.state.shots, seconds: app.state.seconds,
+  });
+}
+
+function projectionLocal() {
+  const p = carm.projection();
   const src = patient.toLocal(p.src);
   const det = patient.toLocal(p.det);
   const U = patient.toLocal(p.det.clone().addScaledVector(p.u, p.radius)).sub(det);
   const V = patient.toLocal(p.det.clone().addScaledVector(p.v, p.radius)).sub(det);
-  return { src, det, U, V };
+  return { src, det, U, V, screen: p.screen };
 }
 
-function imageDone(view) {
+/** steel objects in the beam, in the patient frame (mm) */
+function collectMetal() {
+  const out = { cyl: [], box: [] };
+  for (const m of fracView.pinMetal) {
+    out.cyl.push({ a: m.a.clone().applyMatrix4(fracView.mP), b: m.b.clone().applyMatrix4(fracView.mP), r: m.r, mu: 0.9 });
+  }
+  dhs.metal(out);
+  for (const it of tools.items) {
+    if (!it.held) continue;
+    it.group.updateMatrixWorld();
+    const a = patient.toLocal(it.tip.clone().applyMatrix4(it.group.matrixWorld));
+    const b = patient.toLocal(new THREE.Vector3(0, 0, -0.06).applyMatrix4(it.group.matrixWorld));
+    out.cyl.push({ a, b, r: it.kind === 'spike' ? 3.5 : 5, mu: 0.9 });
+  }
+  return out;
+}
+
+function imageDone(screen) {
   carm.beam.visible = false;
   app.state.busy = null;
-  app.state.live = view;
-  monitor.imageUpdated(view);
-  hud.showImage(view, drr.canvases[view], view);
+  app.state.live = screen;
+  monitor.imageUpdated(screen);
+  hud.showImage(screen, drr.canvases[screen], screen);
   refresh();
-  if (queue.length) app.shoot(queue.shift());
+  if (queue.length) { const k = queue.shift(); app.shoot(k === 'HERE' ? undefined : k); }
 }
 
 app.toggleInvert = () => {
   app.state.invert = !app.state.invert;
   drr.invert = app.state.invert;
   drr.reprocess();
-  for (const v of ['AP', 'LAT', 'OBL']) {
+  for (const v of ['AP', 'LAT']) {
     monitor.screens[v].tex.needsUpdate = true;
     hud.showImage(v, drr.canvases[v], app.state.live);
   }
@@ -145,8 +182,8 @@ function applySide() {
   // VR: stand lateral to the operated hip, facing the patient
   xr.setHome(new THREE.Vector3(-0.7 * s, 0, 0.1), s > 0 ? -Math.PI / 2 : Math.PI / 2);
   if (renderer.xr.isPresenting) xr.goHome();
-  for (const [panel, z] of [[controlPanel, 0.85], [reductionPanel, -0.62]]) {
-    panel.mesh.position.set(-0.95 * s, 1.15, z);
+  for (const [panel, z, y] of [[controlPanel, 0.85, 1.15], [reductionPanel, -0.62, 1.3]]) {
+    panel.mesh.position.set(-0.95 * s, y, z);
     panel.mesh.lookAt(-0.6 * s, 1.75, 0.08);
   }
   tools.place(s);
@@ -156,10 +193,37 @@ function applySide() {
 }
 
 function shootAll() {
-  app.shoot('OBL');
   app.shoot('LAT');
   app.shoot('AP');
 }
+
+app.setCarm = (key, v) => { carm.set({ [key]: v }); };
+app.toggleLaser = () => { app.state.laser = !app.state.laser; carm.laserOn = app.state.laser; carm.version++; refresh(); };
+
+// ---------- DHS guidewire ----------
+app.placeGuide = () => {
+  if (dhs.placeGuide()) { hud.guideChanged(dhs.guide); sounds.click(); } else hud.toast(dhs.status);
+  refresh();
+};
+app.removeGuide = () => { dhs.removeGuide(); if (dhs.status) hud.toast(dhs.status); refresh(); };
+app.setGuide = (key, v) => {
+  if (!dhs.placeGuide({ [key]: v })) hud.toast(dhs.status);
+  hud.guideChanged(dhs.guide);
+  refresh();
+};
+app.setDrill = dir => {
+  if (dir && !dhs.guide.placed) { hud.toast('Place the angle guide first (Wire tab).'); return; }
+  app.state.drill = dir;
+};
+app.removeWire = () => { dhs.removeWire(); hud.hideScore(); app.scoreText = []; refresh(); };
+app.score = () => {
+  const sc = scoreWire(sim, dhs, fracView);
+  app.scoreText = scoreLines(sc, sim.measures(), app.state.shots, app.state.seconds);
+  hud.showScore(app.scoreText);
+  hud.toast(app.scoreText[0] + (sc ? ` — TAD ${sc.tad.toFixed(0)} mm, zone ${sc.zone}` : ''), 3500);
+  sounds.click();
+  refresh();
+};
 
 app.setMuscles = on => {
   app.state.muscles = on;
@@ -179,6 +243,7 @@ app.freeLeg = () => { sim.releaseFoot(); reducer.ref = null; refresh(); };
 app.freePin = () => { sim.releasePin(); reducer.ref = null; refresh(); };
 
 app.autoReduce = kind => {
+  if (sim.pinned) { hud.toast('The guidewire is holding the fracture. Remove the wire first.'); return; }
   hud.resetSliders();
   reducer.autoReduce(kind);
   app.state.autoKind = kind;
@@ -186,6 +251,10 @@ app.autoReduce = kind => {
 };
 
 app.restartFracture = () => {
+  dhs.removeWire();
+  dhs.removeGuide();
+  app.scoreText = [];
+  hud.hideScore();
   reducer.releaseAll();
   hud.resetSliders();
   sim.reset();
@@ -224,45 +293,58 @@ function readoutText(m) {
     `rotation ${m.rotation >= 0 ? 'ext' : 'int'} ${Math.abs(m.rotation).toFixed(0)}° · sag ${m.sag.toFixed(0)} mm · AM support: ${m.amcs}${status}`;
 }
 
-// ---------- VR control panel ----------
+// ---------- VR panels ----------
 function makeControlPanel() {
   return new Panel({
-    width: 0.56, height: 0.4, title: 'Controls',
+    width: 0.56, height: 0.47, title: 'C-arm & view',
     items: [
-      { type: 'label', x: 22, y: 52, w: 200, h: 24, label: 'C-arm', size: 22, color: '#9fb3ba' },
-      { type: 'button', x: 20, y: 78, w: 110, h: 66, label: 'AP', onPress: () => app.shoot('AP'), active: () => app.state.busy === 'AP' },
-      { type: 'button', x: 140, y: 78, w: 120, h: 66, label: 'LAT', onPress: () => app.shoot('LAT'), active: () => app.state.busy === 'LAT' },
-      { type: 'button', x: 270, y: 78, w: 150, h: 66, label: 'OBL 30°', size: 28, onPress: () => app.shoot('OBL'), active: () => app.state.busy === 'OBL' },
-      { type: 'button', x: 430, y: 78, w: 110, h: 66, label: 'Invert', size: 26, onPress: () => app.toggleInvert(), active: () => app.state.invert },
-      { type: 'label', x: 22, y: 152, w: 200, h: 24, label: 'Skin', size: 22, color: '#9fb3ba' },
-      { type: 'button', x: 20, y: 178, w: 160, h: 62, label: () => (app.state.skinOn ? 'Skin ON' : 'Skin OFF'), size: 28, onPress: () => app.setSkinOn(!app.state.skinOn), active: () => app.state.skinOn },
-      { type: 'slider', x: 210, y: 200, w: 330, h: 26, label: 'Fade', value: () => app.state.skinOpacity, onChange: v => app.setSkinOpacity(v) },
-      { type: 'label', x: 22, y: 246, w: 200, h: 24, label: 'Side', size: 22, color: '#9fb3ba' },
-      { type: 'button', x: 20, y: 272, w: 160, h: 50, label: 'Right hip', size: 26, onPress: () => app.setSide('right'), active: () => app.state.side === 'right' },
-      { type: 'button', x: 190, y: 272, w: 160, h: 50, label: 'Left hip', size: 26, onPress: () => app.setSide('left'), active: () => app.state.side === 'left' },
-      { type: 'button', x: 20, y: 334, w: 250, h: 52, label: 'Reset position', size: 26, onPress: () => xr.goHome() },
-      { type: 'button', x: 290, y: 334, w: 250, h: 52, label: 'Exit VR', size: 28, color: '#7a2b25', onPress: () => app.exitVR() },
+      { type: 'button', x: 20, y: 56, w: 100, h: 62, label: 'AP', onPress: () => app.shoot('AP'), active: () => app.state.busy === 'AP' },
+      { type: 'button', x: 128, y: 56, w: 110, h: 62, label: 'LAT', onPress: () => app.shoot('LAT'), active: () => app.state.busy === 'LAT' },
+      { type: 'button', x: 246, y: 56, w: 134, h: 62, label: 'OBL 30°', size: 28, onPress: () => app.shoot('OBL'), active: () => app.state.busy === 'OBL' },
+      { type: 'button', x: 388, y: 56, w: 152, h: 62, label: '☢ X-RAY', size: 28, color: '#6b4d10', activeColor: '#c98a10', onPress: () => app.shoot(), active: () => app.state.busy === 'HERE' },
+      { type: 'label', x: 22, y: 124, w: 520, h: 26, size: 19, color: '#9fb3ba', label: 'Grip blue ring = rotate C-arm · blue bar = move it · A/X = pedal' },
+      { type: 'button', x: 20, y: 156, w: 120, h: 54, label: 'Invert', size: 26, onPress: () => app.toggleInvert(), active: () => app.state.invert },
+      { type: 'button', x: 148, y: 156, w: 120, h: 54, label: 'Laser', size: 26, onPress: () => app.toggleLaser(), active: () => app.state.laser },
+      { type: 'label', x: 280, y: 156, w: 260, h: 54, size: 20, color: '#ffe08a', label: () => carm.angleText().replace(/ {2}/g, ' ') },
+      { type: 'button', x: 20, y: 222, w: 160, h: 58, label: () => (app.state.skinOn ? 'Skin ON' : 'Skin OFF'), size: 26, onPress: () => app.setSkinOn(!app.state.skinOn), active: () => app.state.skinOn },
+      { type: 'slider', x: 210, y: 244, w: 330, h: 26, label: 'Fade', value: () => app.state.skinOpacity, onChange: v => app.setSkinOpacity(v) },
+      { type: 'button', x: 20, y: 292, w: 160, h: 54, label: 'Right hip', size: 26, onPress: () => app.setSide('right'), active: () => app.state.side === 'right' },
+      { type: 'button', x: 190, y: 292, w: 160, h: 54, label: 'Left hip', size: 26, onPress: () => app.setSide('left'), active: () => app.state.side === 'left' },
+      { type: 'button', x: 360, y: 292, w: 180, h: 54, label: () => (app.state.muscles ? 'Muscles ON' : 'Muscles OFF'), size: 24,
+        onPress: () => app.setMuscles(!app.state.muscles), active: () => app.state.muscles },
+      { type: 'button', x: 20, y: 360, w: 250, h: 56, label: 'Reset position', size: 26, onPress: () => xr.goHome() },
+      { type: 'button', x: 290, y: 360, w: 250, h: 56, label: 'Exit VR', size: 28, color: '#7a2b25', onPress: () => app.exitVR() },
+      { type: 'label', x: 22, y: 424, w: 520, h: 30, size: 19, color: '#9fb3ba', label: () => `X-rays: ${app.state.shots} (${app.state.seconds.toFixed(1)} s)` },
     ],
   });
 }
 
 function makeReductionPanel() {
   const auto = [['good', 'Good'], ['varus', 'Varus'], ['sag', 'Sag'], ['gap', 'Gap']];
+  const line = (y, fn, color = '#ffe08a', size = 19) => ({ type: 'label', x: 22, y, w: 520, h: 26, size, color, label: fn });
   return new Panel({
-    width: 0.56, height: 0.42, title: 'Reduction',
+    width: 0.56, height: 0.76, title: 'Reduction & DHS',
     items: [
-      { type: 'label', x: 22, y: 50, w: 520, h: 26, size: 20, color: '#9fb3ba', label: 'Grip button: boot = foot, blue T-handle = pin, tray = tools' },
-      { type: 'button', x: 20, y: 84, w: 255, h: 58, label: 'Free leg', size: 28, onPress: () => app.freeLeg(), active: () => sim.footHold.active },
-      { type: 'button', x: 285, y: 84, w: 255, h: 58, label: 'Free pin', size: 28, onPress: () => app.freePin(), active: () => sim.pinHold.active },
-      { type: 'label', x: 22, y: 150, w: 300, h: 24, size: 22, color: '#9fb3ba', label: 'Auto-reduce' },
-      ...auto.map(([id, label], i) => ({ type: 'button', x: 20 + i * 132, y: 176, w: 124, h: 58, label, size: 26,
+      line(48, 'Grip: boot = foot · blue T-handle = pin · tray = tools', '#9fb3ba', 18),
+      { type: 'button', x: 20, y: 78, w: 255, h: 54, label: 'Free leg', size: 26, onPress: () => app.freeLeg(), active: () => sim.footHold.active },
+      { type: 'button', x: 285, y: 78, w: 255, h: 54, label: 'Free pin', size: 26, onPress: () => app.freePin(), active: () => sim.pinHold.active },
+      line(138, 'Auto-reduce', '#9fb3ba', 20),
+      ...auto.map(([id, label], i) => ({ type: 'button', x: 20 + i * 132, y: 162, w: 124, h: 52, label, size: 25,
         onPress: () => app.autoReduce(id), active: () => !!reducer.anim && reducer.anim.kind === id })),
-      { type: 'button', x: 20, y: 244, w: 255, h: 56, label: 'Restart fracture', size: 26, onPress: () => app.restartFracture() },
-      { type: 'button', x: 285, y: 244, w: 255, h: 56, label: () => (app.state.muscles ? 'Muscles ON' : 'Muscles OFF'), size: 26,
-        onPress: () => app.setMuscles(!app.state.muscles), active: () => app.state.muscles },
-      { type: 'label', x: 22, y: 312, w: 520, h: 30, size: 21, color: '#ffe08a', label: () => app.readout1 || '' },
-      { type: 'label', x: 22, y: 346, w: 520, h: 30, size: 21, color: '#ffe08a', label: () => app.readout2 || '' },
-      { type: 'label', x: 22, y: 380, w: 520, h: 30, size: 21, color: '#c8d8dc', label: () => reducer.status || '' },
+      { type: 'button', x: 20, y: 222, w: 255, h: 50, label: 'Restart fracture', size: 24, onPress: () => app.restartFracture() },
+      line(280, () => app.readout1 || ''),
+      line(306, () => app.readout2 || ''),
+      line(338, 'DHS guidewire — tray: angle guide, drill (trigger = drill)', '#9fb3ba', 18),
+      { type: 'button', x: 20, y: 366, w: 255, h: 52, label: 'Place guide', size: 25, onPress: () => app.placeGuide(), active: () => dhs.guide.placed },
+      { type: 'button', x: 285, y: 366, w: 255, h: 52, label: 'Remove guide', size: 25, onPress: () => app.removeGuide() },
+      { type: 'button', x: 20, y: 426, w: 255, h: 52, label: 'Remove wire', size: 25, onPress: () => app.removeWire() },
+      { type: 'button', x: 285, y: 426, w: 255, h: 52, label: 'Score', size: 27, color: '#2c5f3a', onPress: () => app.score() },
+      line(486, () => dhs.statusText(), '#c8d8dc', 18),
+      line(520, () => app.scoreText[0] || '', '#ffe08a', 22),
+      line(552, () => app.scoreText[1] || ''),
+      line(580, () => app.scoreText[2] || ''),
+      line(608, () => (app.scoreText[3] || '').slice(0, 62)),
+      line(636, () => (app.scoreText[3] || '').slice(62)),
     ],
   });
 }
@@ -305,7 +387,131 @@ function makeGrabbables() {
     release: () => { refresh(); }, // an assistant keeps holding the pin
     highlight: on => fracView.setHighlight('pin', on),
   };
-  return [foot, pin, ...tools.grabbables()];
+  const ring = {
+    id: 'carm-ring', radius: 0.26,
+    worldPos: out => carm.ringWorld(out),
+    grab: pose => carm.grabRing(pose.pos),
+    move: pose => carm.dragTo(pose.pos),
+    release: () => carm.release(),
+    highlight: on => carm.highlight('ring', on),
+  };
+  const bar = {
+    id: 'carm-bar', radius: 0.16,
+    worldPos: out => carm.barWorld(out),
+    grab: pose => carm.grabBar(pose.pos),
+    move: pose => carm.dragTo(pose.pos),
+    release: () => carm.release(),
+    highlight: on => carm.highlight('bar', on),
+  };
+  const guide = {
+    id: 'guide', radius: 0.11,
+    worldPos: out => (dhs.guide.placed ? fracView.worldPoint('D', dhs.gripRest(), out) : dhs.guideFree.getWorldPosition(out)),
+    grab: () => {
+      guide.locked = dhs.wireInBone;
+      if (guide.locked) hud.toast('Withdraw the wire before moving the guide.');
+      guide.held = true;
+    },
+    move: pose => {
+      if (guide.locked) return;
+      const p = dhs.guideFromHand(patient.toLocal(pose.pos));
+      if (p.lateralDist < 75) {
+        dhs.placeGuide({ h: p.h, rot: p.rot });
+        hud.guideChanged(dhs.guide);
+      } else {
+        if (dhs.guide.placed && !dhs.wire.inGuide) dhs.removeGuide();
+        if (!dhs.guide.placed) {
+          dhs.guideFree.quaternion.copy(pose.quat);
+          dhs.guideFree.position.copy(pose.pos).sub(new THREE.Vector3(0.15, 0, 0.048).applyQuaternion(pose.quat));
+        }
+      }
+    },
+    release: () => { guide.held = false; refresh(); },
+    highlight: on => dhs.gripMat.emissive.setHex(on ? 0x335533 : 0x000000),
+  };
+  const drill = {
+    id: 'drill', radius: 0.12,
+    worldPos: out => dhs.drill.localToWorld(out.copy(dhs.drillGrip)),
+    grab: () => { drill.held = true; drill.snapped = false; },
+    move: (pose, s) => {
+      if (!drill.snapped) {
+        // free in the hand: hold it by the handle
+        dhs.drill.quaternion.copy(pose.quat);
+        dhs.drill.position.copy(pose.pos).sub(dhs.drillGrip.clone().applyQuaternion(pose.quat));
+        dhs.drill.updateMatrixWorld();
+        if (!dhs.guide.placed) return;
+        const axis = wireAxisWorld();
+        let target, chuck = dhs.drill.localToWorld(new THREE.Vector3(0, 0, -0.065));
+        if (!dhs.wire.inGuide) {
+          // loaded wire: its tip into the guide sleeve
+          const tipW = dhs.drill.localToWorld(new THREE.Vector3(0, 0, -0.065 - WIRE_LEN / 1000));
+          target = axis.entry; chuck = tipW;
+        } else {
+          target = axis.tail; // pick up the wire left in the guide
+        }
+        if (chuck.distanceTo(target) < 0.06) {
+          if (!dhs.wire.inGuide) dhs.insertWire();
+          drill.snapped = true;
+          drill.hand0 = pose.pos.clone();
+          drill.d0 = dhs.wire.depth;
+          xr.pulse(s, 0.6, 60);
+        }
+        return;
+      }
+      // on the wire: pushing along the wire advances it while the trigger runs the drill
+      const axis = wireAxisWorld();
+      const target = drill.d0 + pose.pos.clone().sub(drill.hand0).dot(axis.dir) * 1000;
+      const trig = xr.trigger(s);
+      const depth = dhs.wire.depth;
+      if (target > depth + 0.3 && trig > 0.1) {
+        const load = dhs.drive(Math.min(target - depth, dhs.speed() * trig * frameDt));
+        drillingNow = true;
+        sounds.drill(true, load);
+        xr.pulse(s, 0.15 + 0.6 * load, 30);
+        if (dhs.blocked) xr.pulse(s, 1, 80);
+      } else if (target < depth - 0.3) {
+        dhs.drive(Math.max(target - depth, -40 * frameDt));
+        if (trig > 0.1) { drillingNow = true; sounds.drill(true, 0.15); }
+      } else if (trig > 0.1) { drillingNow = true; sounds.drill(true, 0); }
+      if (!dhs.wire.inGuide) drill.snapped = false; // withdrawn completely: wire comes out with the drill
+    },
+    release: () => { drill.held = false; drill.snapped = false; },
+    highlight: on => dhs.drillMat.emissive.setHex(on ? 0x224422 : 0x000000),
+  };
+  app.drillGrab = drill;
+  app.guideGrab = guide;
+  return [foot, pin, ring, bar, guide, drill, ...tools.grabbables()];
+}
+
+/** guide sleeve entry, wire tail and wire direction in the world */
+function wireAxisWorld() {
+  const mD = fracView.mD;
+  const dir = patient.dirToWorld(dhs.w.clone().transformDirection(mD));
+  const entry = patient.toWorld(dhs.E.clone().addScaledVector(dhs.w, -BARREL).applyMatrix4(mD));
+  const tail = patient.toWorld(dhs.E.clone().addScaledVector(dhs.w, dhs.wire.depth - WIRE_LEN).applyMatrix4(mD));
+  return { dir, entry, tail };
+}
+
+/** drill and loose guide: in the hand, on the wire, or on the tray */
+function placeHeldObjects() {
+  const drill = app.drillGrab, guide = app.guideGrab;
+  const onWire = dhs.wire.inGuide && (drill.snapped || (!drill.held && !app.state.inVR));
+  if (onWire) {
+    const a = wireAxisWorld();
+    const z = a.dir.clone().negate();
+    const up = new THREE.Vector3(0, 1, 0);
+    const x = new THREE.Vector3().crossVectors(up, z).normalize();
+    const y = new THREE.Vector3().crossVectors(z, x);
+    dhs.drill.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z));
+    dhs.drill.position.copy(a.tail).addScaledVector(a.dir, 0.065);
+  } else if (!drill.held) {
+    dhs.drill.position.copy(tools.slots[3]).add(new THREE.Vector3(0, 0.02, 0));
+    dhs.drill.quaternion.setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2);
+  }
+  dhs.guideFree.visible = !dhs.guide.placed;
+  if (!dhs.guide.placed && !guide.held) {
+    dhs.guideFree.position.copy(tools.slots[2]);
+    dhs.guideFree.quaternion.setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
+  }
 }
 
 // ---------- browser taps on 3D panels / monitor screens ----------
@@ -321,7 +527,7 @@ function setupPointer() {
     if (moved > 8 || !quick) return;
     const ndc = new THREE.Vector2((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
     ray.setFromCamera(ndc, camera);
-    const targets = [monitor.panel.mesh, monitor.screens.AP.mesh, monitor.screens.LAT.mesh, monitor.screens.OBL.mesh];
+    const targets = [monitor.panel.mesh, monitor.screens.AP.mesh, monitor.screens.LAT.mesh];
     const hit = ray.intersectObjects(targets, false)[0];
     if (!hit) return;
     if (hit.object.userData.panel) {
@@ -355,6 +561,8 @@ async function start() {
   fracView = new FractureView(patient, sim);
   tools = new Tools();
   scene.add(tools.root);
+  dhs = new DHS({ sim, fracView, patient, volume: assets.volume, meta: assets.meta, sounds });
+  tools.root.add(dhs.drill, dhs.guideFree);
   hud.setProgress(0.96, 'Letting the muscles displace the fracture…');
   await new Promise(r => setTimeout(r, 30));
   sim.settle(5);
@@ -366,9 +574,11 @@ async function start() {
 
   const grabbables = makeGrabbables();
   xr = new XRSystem(renderer, rig, camera, () => [monitor.panel, controlPanel, reductionPanel], () => grabbables);
+  xr.onPedal = () => app.shoot();
   let savedCam = null;
   xr.onStart = () => {
     app.state.inVR = true;
+    sounds.unlock();
     savedCam = { pos: camera.position.clone(), quat: camera.quaternion.clone(), target: controls.target.clone() };
     controls.enabled = false;
     hud.setVisible(false);
@@ -403,11 +613,31 @@ async function start() {
   hud.hideLoading();
 
   const clock = new THREE.Clock();
-  let readT = 0, wasAnim = false;
+  let readT = 0, wasAnim = false, laserT = 0, laserV = -1, carmV = -1;
+  const laserTargets = () => (app.state.skinOn ? [patient.meshes.skin]
+    : [patient.meshes.femur_prox, patient.meshes.femur_dist, patient.meshes.pelvis]).filter(Boolean);
   renderer.setAnimationLoop(() => {
     const dt = Math.min(clock.getDelta(), 0.1);
+    frameDt = dt;
+    drillingNow = false;
     if (renderer.xr.isPresenting) xr.update(dt);
     else controls.update();
+    // browser drilling (press and hold)
+    if (app.state.drill) {
+      if (!dhs.wire.inGuide) dhs.insertWire();
+      if (dhs.wire.inGuide) {
+        const load = dhs.drive(app.state.drill > 0 ? dhs.speed() * dt : -20 * dt);
+        drillingNow = true;
+        sounds.drill(true, app.state.drill > 0 ? load : 0.15);
+      }
+    }
+    if (!drillingNow) sounds.drill(false);
+    placeHeldObjects();
+    // C-arm: laser and slider values when it moved
+    // laser: hidden while the C-arm moves, placed again once it has stopped (keeps VR smooth)
+    if (carm.version !== carmV) { carmV = carm.version; laserT = 0.25; carm.laser.visible = false; hud.carmChanged(carm.state, carm.angleText()); }
+    laserT -= dt;
+    if (carm.version !== laserV && laserT <= 0) { laserV = carm.version; carm.updateLaser(laserTargets()); }
     // physics
     sim.tools = tools.tips(patient);
     reducer.update(dt);
@@ -430,7 +660,9 @@ async function start() {
       app.readout1 = t.slice(0, cut);
       app.readout2 = t.slice(cut + 3).replace(/ · (Reducing…|.*held)$/, '');
       tuning.refresh(m);
+      hud.wireStatus(dhs.statusText());
       if (reductionPanel.mesh.visible) reductionPanel.draw();
+      if (controlPanel.mesh.visible) controlPanel.draw();
     }
     carm.update(dt);
     drr.tick();
@@ -447,5 +679,7 @@ start().catch(err => {
 window.__app = app;
 Object.defineProperty(window, "__drr", { get: () => drr });
 Object.defineProperty(window, "__patient", { get: () => patient });
-Object.defineProperty(window, "__vr", { get: () => ({ rig, controlPanel, reductionPanel, monitor, renderer, fracView, tools, camera, controls }) });
+Object.defineProperty(window, "__vr", { get: () => ({ rig, controlPanel, reductionPanel, monitor, renderer, fracView, tools, camera, controls, xr }) });
 Object.defineProperty(window, "__sim", { get: () => sim });
+Object.defineProperty(window, "__dhs", { get: () => dhs });
+Object.defineProperty(window, "__carm", { get: () => carm });

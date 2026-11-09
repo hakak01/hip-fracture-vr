@@ -7,6 +7,9 @@ const SIZE = 512;        // image resolution
 const STRIPS = 8;        // image is rendered in strips over several frames
 const L_MAX = 24;        // range of the encoded line integral
 const MAX_FRAGS = 4;
+const MAX_CYL = 10;
+const MAX_BOX = 3;
+const M_MAX = 6;         // range of the encoded metal line integral
 
 const vertexShader = /* glsl */`
   out vec2 vUv;
@@ -30,8 +33,67 @@ const fragmentShader = /* glsl */`
   uniform int uNFrag;
   uniform mat4 uFragInv[${MAX_FRAGS}];
   uniform float uFragLab[${MAX_FRAGS}];
+  // metal objects (steel): cylinders A-B with radius R, and boxes (centre, half size, world->box rotation)
+  uniform int uNCyl;
+  uniform vec3 uCylA[${MAX_CYL}];
+  uniform vec3 uCylB[${MAX_CYL}];
+  uniform float uCylR[${MAX_CYL}];
+  uniform float uCylMu[${MAX_CYL}];
+  uniform int uNBox;
+  uniform vec3 uBoxC[${MAX_BOX}];
+  uniform vec3 uBoxH[${MAX_BOX}];
+  uniform mat3 uBoxR[${MAX_BOX}];
+  uniform float uBoxMu[${MAX_BOX}];
   in vec2 vUv;
   layout(location = 0) out highp vec4 fragOut;
+
+  vec3 safeInv(vec3 d) {
+    vec3 sd = mix(vec3(-1.0), vec3(1.0), step(0.0, d)) * max(abs(d), vec3(1e-8));
+    return 1.0 / sd;
+  }
+
+  float cylChord(vec3 S, vec3 dir, float len, vec3 A, vec3 B, float R) {
+    vec3 ax = B - A;
+    float L = length(ax);
+    if (L < 1e-4) return 0.0;
+    vec3 u = ax / L;
+    vec3 w0 = S - A;
+    vec3 wp = w0 - dot(w0, u) * u;
+    vec3 dp = dir - dot(dir, u) * u;
+    float a = dot(dp, dp), b = 2.0 * dot(wp, dp), c = dot(wp, wp) - R * R;
+    float t0, t1;
+    if (a < 1e-10) {
+      if (c > 0.0) return 0.0;
+      t0 = -1e9; t1 = 1e9;
+    } else {
+      float disc = b * b - 4.0 * a * c;
+      if (disc <= 0.0) return 0.0;
+      float sq = sqrt(disc);
+      t0 = (-b - sq) / (2.0 * a);
+      t1 = (-b + sq) / (2.0 * a);
+    }
+    float s0 = dot(w0, u), du = dot(dir, u);
+    if (abs(du) < 1e-8) {
+      if (s0 < 0.0 || s0 > L) return 0.0;
+    } else {
+      float ta = -s0 / du, tb = (L - s0) / du;
+      t0 = max(t0, min(ta, tb));
+      t1 = min(t1, max(ta, tb));
+    }
+    t0 = max(t0, 0.0);
+    t1 = min(t1, len);
+    return max(0.0, t1 - t0);
+  }
+
+  float boxChord(vec3 S, vec3 dir, float len, vec3 C, vec3 H, mat3 R) {
+    vec3 o = R * (S - C);
+    vec3 inv = safeInv(R * dir);
+    vec3 ta = (-H - o) * inv, tb = (H - o) * inv;
+    vec3 tn = min(ta, tb), tf = max(ta, tb);
+    float t0 = max(max(max(tn.x, tn.y), tn.z), 0.0);
+    float t1 = min(min(min(tf.x, tf.y), tf.z), len);
+    return max(0.0, t1 - t0);
+  }
 
   float muOf(float v) {
     float hu = v * 3060.0 - 1000.0;
@@ -44,8 +106,7 @@ const fragmentShader = /* glsl */`
     vec3 dir = D - uSrc;
     float len = length(dir);
     dir /= len;
-    vec3 sdir = sign(dir) * max(abs(dir), vec3(1e-6));
-    vec3 inv = 1.0 / sdir;
+    vec3 inv = safeInv(dir);
     vec3 t0 = (uCorner - uSrc) * inv;
     vec3 t1 = (uCorner + uSize - uSrc) * inv;
     vec3 tmin = min(t0, t1), tmax = max(t0, t1);
@@ -73,9 +134,18 @@ const fragmentShader = /* glsl */`
         t += uStep;
       }
     }
+    float M = 0.0;
+    for (int k = 0; k < ${MAX_CYL}; k++) {
+      if (k >= uNCyl) break;
+      M += uCylMu[k] * cylChord(uSrc, dir, len, uCylA[k], uCylB[k], uCylR[k]);
+    }
+    for (int k = 0; k < ${MAX_BOX}; k++) {
+      if (k >= uNBox) break;
+      M += uBoxMu[k] * boxChord(uSrc, dir, len, uBoxC[k], uBoxH[k], uBoxR[k]);
+    }
     float q = floor(clamp(L / ${L_MAX.toFixed(1)}, 0.0, 1.0) * 65535.0 + 0.5);
     float hi = floor(q / 256.0);
-    fragOut = vec4(hi / 255.0, (q - hi * 256.0) / 255.0, 0.0, 1.0);
+    fragOut = vec4(hi / 255.0, (q - hi * 256.0) / 255.0, clamp(M / ${M_MAX.toFixed(1)}, 0.0, 1.0), 1.0);
   }
 `;
 
@@ -143,6 +213,16 @@ export class DRR {
       uMuW: { value: 0.02 },
       uBoneGain: { value: 3.0 },
       uNFrag: { value: 1 },
+      uNCyl: { value: 0 },
+      uCylA: { value: Array.from({ length: MAX_CYL }, () => new THREE.Vector3()) },
+      uCylB: { value: Array.from({ length: MAX_CYL }, () => new THREE.Vector3()) },
+      uCylR: { value: new Array(MAX_CYL).fill(1) },
+      uCylMu: { value: new Array(MAX_CYL).fill(0) },
+      uNBox: { value: 0 },
+      uBoxC: { value: Array.from({ length: MAX_BOX }, () => new THREE.Vector3()) },
+      uBoxH: { value: Array.from({ length: MAX_BOX }, () => new THREE.Vector3(1, 1, 1)) },
+      uBoxR: { value: Array.from({ length: MAX_BOX }, () => new THREE.Matrix3()) },
+      uBoxMu: { value: new Array(MAX_BOX).fill(0) },
       uFragInv: { value: Array.from({ length: MAX_FRAGS }, () => new THREE.Matrix4()) },
       uFragLab: { value: [vm.labels.proximal, vm.labels.distal, 0, 0] },
     };
@@ -174,7 +254,7 @@ export class DRR {
       this.noise[i] = Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(2 * Math.PI * Math.random());
     }
     this.canvases = {};
-    for (const v of ['AP', 'LAT', 'OBL']) {
+    for (const v of ['AP', 'LAT']) {
       const c = document.createElement('canvas');
       c.width = c.height = SIZE;
       const g = c.getContext('2d');
@@ -182,7 +262,9 @@ export class DRR {
       this.canvases[v] = c;
     }
     this.job = null;
-    this.Lv = {};   // stored line-integral images per view
+    this.Lv = {};   // stored line-integral images per screen
+    this.Mv = {};   // stored metal line integrals per screen
+    this.info = {}; // overlay text per screen
     this.time = {};
     this.params = { harm: 0.35, harmR: 30, sharp: 1.5, sharpR: 4, lo: 0.01, hi: 0.997, gamma: 0.8, noise: 0.02 };
     this.invert = false;
@@ -190,8 +272,8 @@ export class DRR {
     this.onImage = null; // callback(view)
   }
 
-  /** Start a shot. geom is in the patient frame (mm). */
-  shoot(view, geom) {
+  /** Start a shot. screen = 'AP' | 'LAT'; geom (patient frame, mm); metal = {cyl:[], box:[]}; info for the overlay. */
+  shoot(screen, geom, metal = { cyl: [], box: [] }, info = {}) {
     const u = this.uniforms;
     u.uSrc.value.copy(geom.src);
     u.uDetC.value.copy(geom.det);
@@ -202,8 +284,19 @@ export class DRR {
       u.uFragInv.value[i].copy(f.matrix).invert();
       u.uFragLab.value[i] = f.label;
     });
+    const cyl = metal.cyl.slice(0, MAX_CYL), box = metal.box.slice(0, MAX_BOX);
+    u.uNCyl.value = cyl.length;
+    cyl.forEach((c, i) => {
+      u.uCylA.value[i].copy(c.a); u.uCylB.value[i].copy(c.b);
+      u.uCylR.value[i] = c.r; u.uCylMu.value[i] = c.mu ?? 0.9;
+    });
+    u.uNBox.value = box.length;
+    box.forEach((b, i) => {
+      u.uBoxC.value[i].copy(b.c); u.uBoxH.value[i].copy(b.h);
+      u.uBoxR.value[i].copy(b.R); u.uBoxMu.value[i] = b.mu ?? 0.9;
+    });
     // more, smaller strips in VR keep the headset frame rate smooth
-    this.job = { view, strip: 0, strips: this.renderer.xr.isPresenting ? 16 : STRIPS };
+    this.job = { view: screen, info, strip: 0, strips: this.renderer.xr.isPresenting ? 16 : STRIPS };
   }
 
   get busy() { return !!this.job; }
@@ -229,15 +322,18 @@ export class DRR {
     this.job = null;
     const W = SIZE, px = this.pixels, scale = L_MAX / 65535;
     const L = this.Lv[job.view] || (this.Lv[job.view] = new Float32Array(W * W));
+    const Mt = this.Mv[job.view] || (this.Mv[job.view] = new Float32Array(W * W));
     for (let y = 0; y < W; y++) {
       // flip rows: read-back row 0 is the bottom of the image
       const src = (W - 1 - y) * W;
       for (let x = 0; x < W; x++) {
         const i = (src + x) * 4;
         L[y * W + x] = (px[i] * 256 + px[i + 1]) * scale;
+        Mt[y * W + x] = px[i + 2] / 255 * M_MAX;
       }
     }
     this.time[job.view] = new Date();
+    this.info[job.view] = job.info;
     this.process(job.view);
     if (this.onImage) this.onImage(job.view);
   }
@@ -249,6 +345,7 @@ export class DRR {
 
   process(view) {
     const W = SIZE, N = W * W, L = this.Lv[view], A = this.A, B = this.B, T = this.T, P = this.params;
+    const Mt = this.Mv[view];
     if (!L) return;
     // "harmonisation": remove the slow soft-tissue thickness gradient (as C-arm processing does)
     boxBlur(L, A, T, W, W, P.harmR);
@@ -262,7 +359,7 @@ export class DRR {
     const samples = [];
     for (let y = 0; y < W; y += 3) for (let x = 0; x < W; x += 3) {
       const dx = x - R + 0.5, dy = y - R + 0.5;
-      if (dx * dx + dy * dy < R2) samples.push(A[y * W + x]);
+      if (dx * dx + dy * dy < R2 && Mt[y * W + x] < 0.05) samples.push(A[y * W + x]); // ignore metal
     }
     samples.sort((a, b) => a - b);
     const lo = samples[Math.floor(samples.length * P.lo)];
@@ -283,6 +380,7 @@ export class DRR {
         g = this.invert ? b : 1 - b;      // default: dense = dark, like the C-arm screen
         g = Math.pow(g, P.gamma);
         g += P.noise * this.noise[noff + i];
+        if (Mt[i] > 0) g = this.invert ? 1 - (1 - g) * Math.exp(-1.6 * Mt[i]) : g * Math.exp(-1.6 * Mt[i]); // steel
         g *= 1 - 0.16 * rr * rr;          // intensifier vignetting
         g *= Math.min(1, (1 - rr) * R / 2.5); // soft field edge
         g = g < 0 ? 0 : g > 1 ? 1 : g;
@@ -296,12 +394,14 @@ export class DRR {
   }
 
   drawOverlay(ctx, view) {
-    const W = SIZE;
+    const W = SIZE, info = this.info[view] || {};
     ctx.fillStyle = '#ffd770';
     ctx.font = '600 26px system-ui, sans-serif';
     ctx.textBaseline = 'top';
     ctx.textAlign = 'left';
-    ctx.fillText({ AP: 'AP', LAT: 'LAT', OBL: 'OBL 30°' }[view], 14, 12);
+    ctx.fillText(info.label || view, 14, 12);
+    ctx.font = '500 15px system-ui, sans-serif';
+    if (info.angles) ctx.fillText(info.angles, 14, 44);
     ctx.textAlign = 'right';
     ctx.font = '700 40px system-ui, sans-serif';
     ctx.fillText(this.sideLetter, W - 16, 10);
@@ -309,6 +409,7 @@ export class DRR {
     ctx.textBaseline = 'bottom';
     ctx.textAlign = 'left';
     ctx.fillText('68 kV  1.9 mA', 14, W - 12);
+    if (info.count) ctx.fillText(`#${info.count}  ${info.seconds.toFixed(1)} s`, 14, W - 34);
     ctx.textAlign = 'right';
     const t = this.time[view] || new Date();
     ctx.fillText(t.toTimeString().slice(0, 8), W - 14, W - 12);

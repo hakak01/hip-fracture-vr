@@ -219,6 +219,7 @@ export class FractureSim {
   reset() {
     for (const b of [this.P, this.D]) { b.pos.copy(b.origin); b.q.identity(); b.sync(); }
     this.heelAnchor = null;
+    this.pinned = false;
     this.time = 0;
   }
 
@@ -339,6 +340,7 @@ export class FractureSim {
   }
 
   step(dt) {
+    if (this.pinned) { this.time += dt; return; } // a guidewire across the fracture holds the fragments
     const { P, D } = this;
     for (const b of [P, D]) { b.prevPos.copy(b.pos); b.prevQ.copy(b.q); }
     this.forces();

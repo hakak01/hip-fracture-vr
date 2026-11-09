@@ -35,22 +35,30 @@
   <div id="pip" title="Tap to enlarge">
     <div class="shot"><canvas id="pip-AP" width="512" height="512"></canvas></div>
     <div class="shot"><canvas id="pip-LAT" width="512" height="512"></canvas></div>
-    <div class="shot"><canvas id="pip-OBL" width="512" height="512"></canvas></div>
   </div>
+
+  <div id="toast" hidden></div>
 
   <div id="toolbar">
     <div class="tabs">
       <button class="tab on" data-tab="carm">C-arm</button>
       <button class="tab" data-tab="reduce">Reduce</button>
       <button class="tab" data-tab="auto">Auto</button>
+      <button class="tab" data-tab="wire">Wire</button>
       <button class="tab" data-tab="view">View</button>
       <button id="btn-vr" class="vr" hidden>Enter VR</button>
     </div>
     <div class="pane" data-pane="carm">
-      <button id="btn-ap" class="big">AP</button>
-      <button id="btn-lat" class="big">Lateral</button>
-      <button id="btn-obl" class="big">Oblique 30°</button>
-      <button id="btn-invert">Invert</button>
+      <div class="row">
+        <button id="btn-ap" class="big">AP</button>
+        <button id="btn-lat" class="big">Lateral</button>
+        <button id="btn-obl" class="big">Oblique 30°</button>
+        <button id="btn-xray" class="big xray">☢ X-ray</button>
+        <button id="btn-invert">Invert</button>
+        <button id="btn-laser" class="on">Laser</button>
+      </div>
+      <div id="carm-sliders" class="sliders"></div>
+      <div class="row"><span class="readout" id="carm-readout"></span></div>
     </div>
     <div class="pane" data-pane="reduce" hidden>
       <div id="sliders"></div>
@@ -65,6 +73,23 @@
         <button id="btn-restart">Restart fracture</button>
         <span class="readout" id="readout-a"></span>
       </div>
+    </div>
+    <div class="pane" data-pane="wire" hidden>
+      <div class="row">
+        <span class="lbl">Angle guide 135°</span>
+        <button id="btn-guide" class="big">Place guide</button>
+        <button id="btn-unguide">Remove guide</button>
+      </div>
+      <div id="guide-sliders" class="sliders"></div>
+      <div class="row">
+        <span class="lbl">Guidewire</span>
+        <button id="btn-back" class="hold">◀ Withdraw</button>
+        <button id="btn-drill" class="hold big">Drill ▶</button>
+        <button id="btn-unwire">Remove wire</button>
+        <button id="btn-score" class="big">Score</button>
+      </div>
+      <div class="row"><span class="readout" id="wire-status"></span></div>
+      <div id="score-box" class="score" hidden></div>
     </div>
     <div class="pane" data-pane="view" hidden>
       <div class="row">
@@ -98,7 +123,8 @@
         Changed: cropped, resampled, bone and skin surfaces extracted.
         <a href="https://doi.org/10.5281/zenodo.10047292" target="_blank" rel="noopener">doi:10.5281/zenodo.10047292</a></p>
       <p><b>3D engine:</b> three.js (MIT licence).</p>
-      <p class="small">Browser: drag to turn, pinch or scroll to zoom, two fingers to pan. Use the tabs at the bottom. Tap the X-ray pictures to enlarge them.</p>
+      <p class="small">Browser: drag to turn, pinch or scroll to zoom, two fingers to pan. Use the tabs at the bottom. Tap the X-ray pictures to enlarge them. Quest: grip the blue ring on the image intensifier to rotate the C-arm, the blue bar on its arm to move it; the A or X button is the X-ray pedal.</p>
+      <p class="small">Scoring: tip-apex distance (Baumgaertner MR et al., J Bone Joint Surg Am 1995;77:1058) and Cleveland zones (Cleveland M et al., J Bone Joint Surg Am 1959;41:1399).</p>
       <p class="small">Oblique 30° view: Chen SY, Chang SM, et al. BMC Musculoskelet Disord 2020;21:719. <a href="https://doi.org/10.1186/s12891-020-03668-6" target="_blank" rel="noopener">doi:10.1186/s12891-020-03668-6</a></p>
       <button id="btn-about-close" class="big">Close</button>
     </div>

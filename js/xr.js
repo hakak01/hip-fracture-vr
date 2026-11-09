@@ -49,6 +49,7 @@ export class XRSystem {
       ctrl.addEventListener('connected', e => { state.source = e.data; ray.visible = e.data.targetRayMode !== 'screen'; });
       ctrl.addEventListener('disconnected', () => { state.source = null; this.leave(i, state); this.drop(state); });
       ctrl.addEventListener('selectstart', () => {
+        if (state.held) return; // the trigger belongs to the object in the hand (e.g. the drill)
         if (state.hit) state.hit.panel.pointerDown(i, state.hit.uv);
         else if (state.near) this.take(state, 'select');
       });
@@ -117,10 +118,8 @@ export class XRSystem {
     for (const o of this.controllers) if (o !== state && o.held === g) this.drop(o);
     state.held = g;
     state.heldBy = by;
-    g.grab(this.gripPose(state));
-    if (state.source && state.source.gamepad && state.source.gamepad.hapticActuators) {
-      try { state.source.gamepad.hapticActuators[0].pulse(0.4, 40); } catch (e) { /* no haptics */ }
-    }
+    g.grab(this.gripPose(state), state);
+    this.pulse(state, 0.4, 40);
   }
 
   drop(state) {
@@ -131,13 +130,37 @@ export class XRSystem {
     g.release();
   }
 
+  /** controller vibration (intensity 0..1, duration ms) */
+  pulse(state, intensity, ms) {
+    const gp = state && state.source && state.source.gamepad;
+    if (!gp || !gp.hapticActuators || !gp.hapticActuators[0]) return;
+    try { gp.hapticActuators[0].pulse(Math.min(1, intensity), ms); } catch (e) { /* no haptics */ }
+  }
+
+  /** trigger value of a controller (1 for a pinching hand) */
+  trigger(state) {
+    const gp = state && state.source && state.source.gamepad;
+    if (!gp) return state && state.heldBy === 'select' ? 1 : 0;
+    return gp.buttons[0] ? gp.buttons[0].value : 0;
+  }
+
+  /** A / X button = X-ray foot pedal */
+  checkPedal() {
+    for (const s of this.controllers) {
+      const gp = s.source && s.source.gamepad;
+      const down = !!(gp && gp.buttons[4] && gp.buttons[4].pressed);
+      if (down && !s.pedal && this.onPedal) this.onPedal();
+      s.pedal = down;
+    }
+  }
+
   updateGrabs() {
     const grabs = this.getGrabbables();
     const wp = new THREE.Vector3();
     for (const s of this.controllers) {
       if (!s.source) continue;
       const pose = this.gripPose(s);
-      if (s.held) { s.held.move(pose); continue; }
+      if (s.held) { s.held.move(pose, s); continue; }
       let best = null, bd = 1e9;
       for (const g of grabs) {
         const d = g.worldPos(wp).distanceTo(pose.pos);
@@ -152,6 +175,7 @@ export class XRSystem {
   }
 
   update(dt) {
+    this.checkPedal();
     this.updateGrabs();
     const panels = this.getPanels().filter(p => p.mesh.visible);
     const meshes = panels.map(p => p.mesh);

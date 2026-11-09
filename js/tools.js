@@ -38,7 +38,7 @@ export class Tools {
   constructor() {
     this.root = new THREE.Group();
     this.root.name = 'instruments';
-    const top = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.02, 0.56),
+    const top = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.02, 0.56),
       new THREE.MeshStandardMaterial({ color: 0xb7c2c8, metalness: 0.6, roughness: 0.35 }));
     top.position.y = TABLE_TOP;
     const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, TABLE_TOP),
@@ -57,11 +57,10 @@ export class Tools {
   /** tray beside the surgeon, towards the foot end */
   place(sideSign) {
     this.tray.position.set(-0.78 * sideSign, 0, 0.42);
+    // four places on the tray: ball spike, lever, angle guide, drill
+    this.slots = [-0.12, -0.05, 0.03, 0.11].map(dx => new THREE.Vector3(-0.78 * sideSign + dx * sideSign, TABLE_TOP + 0.03, 0.47));
     this.items.forEach((it, i) => {
-      it.home = {
-        pos: new THREE.Vector3(-0.78 * sideSign + (i ? 0.06 : -0.06), TABLE_TOP + 0.03, 0.42 + 0.1),
-        quat: new THREE.Quaternion(), // lying along the tray, tip towards the head end
-      };
+      it.home = { pos: this.slots[i].clone(), quat: new THREE.Quaternion() }; // lying along the tray
       if (!it.held) this.goHome(it);
     });
   }

@@ -1,4 +1,4 @@
-// C-arm monitor cart: three screens (AP, lateral, 30° anteromedial oblique) and a button strip.
+// C-arm monitor cart: two screens (left: AP images, right: lateral and oblique images) and a button strip.
 import * as THREE from 'three';
 import { Panel } from './panel.js';
 
@@ -16,10 +16,10 @@ export class Monitor {
     pole.position.y = 0.9;
     this.root.add(base, pole);
 
-    const S = 0.38; // screen size (m)
+    const S = 0.44; // screen size (m)
     const Y0 = 1.82; // screen centre height (m), above the image intensifier
-    const VIEWS = [['AP', 'AP'], ['LAT', 'LATERAL'], ['OBL', 'OBLIQUE 30°']];
-    const W = 3 * S + 0.16;
+    const VIEWS = [['AP', 'AP'], ['LAT', 'LATERAL / OBLIQUE']];
+    const W = 2 * S + 0.12;
     const housing = new THREE.Mesh(new THREE.BoxGeometry(W, S + 0.1, 0.07), dark);
     housing.position.set(0, Y0, 0);
     this.root.add(housing);
@@ -28,7 +28,7 @@ export class Monitor {
     this.frames = {};
     const labelsY = Y0 + S / 2 + 0.07;
     VIEWS.forEach(([view, title], i) => {
-      const x = (i - 1) * (S + 0.03);
+      const x = (i - 0.5) * (S + 0.03);
       const tex = new THREE.CanvasTexture(drrCanvases[view]);
       tex.colorSpace = THREE.SRGBColorSpace;
       const scr = new THREE.Mesh(new THREE.PlaneGeometry(S, S), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }));
@@ -49,11 +49,13 @@ export class Monitor {
     this.panel = new Panel({
       width: W, height: 0.13, bg: '#101619f2',
       items: [
-        { id: 'ap', type: 'button', x: 20, y: 18, w: 220, h: 94, label: 'AP  ☢', size: 38, onPress: () => app.shoot('AP'), active: () => app.state.busy === 'AP' },
-        { id: 'lat', type: 'button', x: 255, y: 18, w: 290, h: 94, label: 'LATERAL  ☢', size: 38, onPress: () => app.shoot('LAT'), active: () => app.state.busy === 'LAT' },
-        { id: 'obl', type: 'button', x: 560, y: 18, w: 330, h: 94, label: 'OBLIQUE 30° ☢', size: 36, onPress: () => app.shoot('OBL'), active: () => app.state.busy === 'OBL' },
-        { id: 'inv', type: 'button', x: 905, y: 18, w: 170, h: 94, label: 'Invert', size: 34, onPress: () => app.toggleInvert(), active: () => app.state.invert },
-        { id: 'rad', type: 'label', x: 1100, y: 18, w: 190, h: 94, size: 30, color: '#ffd770', align: 'left', label: () => app.state.busy ? '● X-RAY' : '' },
+        { id: 'ap', type: 'button', x: 14, y: 16, w: 110, h: 98, label: 'AP', size: 36, onPress: () => app.shoot('AP'), active: () => app.state.busy === 'AP' },
+        { id: 'lat', type: 'button', x: 132, y: 16, w: 120, h: 98, label: 'LAT', size: 36, onPress: () => app.shoot('LAT'), active: () => app.state.busy === 'LAT' },
+        { id: 'obl', type: 'button', x: 260, y: 16, w: 170, h: 98, label: 'OBL 30°', size: 34, onPress: () => app.shoot('OBL'), active: () => app.state.busy === 'OBL' },
+        { id: 'xray', type: 'button', x: 438, y: 16, w: 200, h: 98, label: '☢ X-RAY', size: 36, color: '#6b4d10', activeColor: '#c98a10', onPress: () => app.shoot(), active: () => app.state.busy === 'HERE' },
+        { id: 'inv', type: 'button', x: 646, y: 16, w: 130, h: 98, label: 'Invert', size: 30, onPress: () => app.toggleInvert(), active: () => app.state.invert },
+        { id: 'laser', type: 'button', x: 784, y: 16, w: 120, h: 98, label: 'Laser', size: 30, onPress: () => app.toggleLaser(), active: () => app.state.laser },
+        { id: 'rad', type: 'label', x: 912, y: 16, w: 80, h: 98, size: 24, color: '#ffd770', align: 'left', label: () => app.state.busy ? '● ON' : '' },
       ],
     });
     this.panel.mesh.position.set(0, Y0 - S / 2 - 0.13, 0.03);
