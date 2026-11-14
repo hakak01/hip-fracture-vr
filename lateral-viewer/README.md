@@ -13,8 +13,12 @@ Not for clinical use. Separate from the VR trainer in the repository root, which
 - **3D**: drag to turn, pinch to zoom. **Beam view** snaps the camera to the exact C-arm beam direction;
   **Reset** goes back. **Colour fragments** (orange = head-neck, blue = shaft), **See-through** makes one
   fragment transparent, **Show beam** draws the X-ray cone.
-- **C-arm**: **Lateral** (horizontal beam, perpendicular to the neck) or **AP**. **Tilt** turns the lateral beam
-  in the horizontal plane to line it up with the neck. **Invert** swaps black and white.
+- **C-arm**: **Lateral** (horizontal beam, perpendicular to the neck) or **AP**. **Tilt** swings the lateral beam
+  about the vertical (towards the head or the foot); **Roll** turns the C so the beam aims up or down out of the
+  horizontal plane. **True lateral of neck** sets tilt and roll so the beam is perpendicular to the head-neck
+  fragment and lies in the plane of the neck and the shaft (head, neck and shaft line up); the numbers it needs
+  are shown next to it and change with the preset. **Standard lateral** goes back to tilt 0, roll 0.
+  **Invert** swaps black and white.
 - The box under the controls says what is wrong, how to spot it on the lateral view, and the numbers measured
   from the anatomical position (anterior cortex step at the anteromedial cortex, shaft shift, angulation,
   rotation, neck fragment flexion and version).

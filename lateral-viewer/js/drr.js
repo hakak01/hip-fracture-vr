@@ -279,12 +279,15 @@ export class DRR {
 
   drawOverlay(ctx) {
     const W = SIZE, info = this.info || {};
+    ctx.save();
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.95)'; // keeps the text readable over the bright field
+    ctx.shadowBlur = 4;
     ctx.fillStyle = '#ffd770';
     ctx.font = '600 26px system-ui, sans-serif';
     ctx.textBaseline = 'top';
     ctx.textAlign = 'left';
     ctx.fillText(info.label || '', 14, 12);
-    ctx.font = '500 15px system-ui, sans-serif';
+    ctx.font = '600 16px system-ui, sans-serif';
     if (info.sub) ctx.fillText(info.sub, 14, 44);
     ctx.textAlign = 'right';
     ctx.font = '700 40px system-ui, sans-serif';
@@ -293,5 +296,6 @@ export class DRR {
     ctx.textBaseline = 'bottom';
     ctx.textAlign = 'left';
     ctx.fillText('68 kV  1.9 mA', 14, W - 12);
+    ctx.restore();
   }
 }
