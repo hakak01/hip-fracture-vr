@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Lateral C-arm Viewer</title>
+  <meta name="description" content="Trochanteric fracture (AO 31-A1) malreductions: 3D bone model and the matching lateral C-arm image from one CT.">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "../lib/three/three.module.min.js",
+        "three/addons/": "../lib/three/addons/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <header>
+    <h1>Lateral C-arm viewer</h1>
+    <span class="sub">Trochanteric fracture AO 31-A1 · right hip on a traction table</span>
+  </header>
+
+  <section id="top">
+    <label class="full">Preset
+      <select id="preset"></select>
+    </label>
+    <div class="row" id="sevrow">
+      <span>Mild</span><input type="range" id="sev" min="0" max="100" step="1"><span>Severe</span>
+    </div>
+  </section>
+
+  <main id="stage">
+    <div id="v3d" class="panel">
+      <canvas id="c3d"></canvas>
+      <div class="tag">3D · drag to turn</div>
+      <div class="floating">
+        <button id="btnBeamView">Beam view</button>
+        <button id="btnFree">Reset</button>
+      </div>
+    </div>
+    <div id="vx" class="panel">
+      <div id="busy">updating…</div>
+    </div>
+  </main>
+
+  <section id="controls">
+    <div class="row">
+      <span class="lbl">C-arm</span>
+      <div class="seg"><button id="btnLat">Lateral</button><button id="btnAP">AP</button></div>
+      <button id="btnInv">Invert</button>
+    </div>
+    <div class="row" id="tiltrow">
+      <span class="lbl">Tilt</span><input type="range" id="tilt" min="-30" max="30" step="1"><span id="tiltval">0°</span>
+    </div>
+    <div class="row wrap">
+      <span class="lbl">3D</span>
+      <button id="btnCol">Colour fragments</button>
+      <button id="btnBeam">Show beam</button>
+    </div>
+    <div class="row wrap">
+      <span class="lbl">See-through</span>
+      <div class="seg"><button id="see_none">None</button><button id="see_prox">Head-neck</button><button id="see_dist">Shaft</button></div>
+    </div>
+
+    <article id="label">
+      <h2 id="pname"></h2>
+      <p id="what"></p>
+      <p class="spot"><b>How to spot it:</b> <span id="spot"></span></p>
+      <p id="range" class="muted"></p>
+      <ul id="nums"></ul>
+      <p class="muted">Numbers are measured from the anatomical position. Orange = head-neck fragment, blue = shaft (with "Colour fragments").</p>
+    </article>
+
+    <footer>
+      <p>CT: woman, 75 years, autoPET / FDG-PET-CT-Lesions (Gatidis S et al., Sci Data 2022;9:601,
+        <a href="https://doi.org/10.1038/s41597-022-01718-3">doi:10.1038/s41597-022-01718-3</a>), CC BY 4.0, via the NCI Imaging Data Commons.
+        Changed: contrast and table removed, legs repositioned for a traction table, fracture simulated, volume cropped and quantised.
+        Bone masks: TotalSegmentator (Wasserthal J et al., Radiol Artif Intell 2023). three.js (MIT). Not for clinical use.</p>
+    </footer>
+  </section>
+
+  <div id="loading">
+    <p>Loading the CT…</p>
+    <div class="bar"><div id="loadbar"></div></div>
+  </div>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
