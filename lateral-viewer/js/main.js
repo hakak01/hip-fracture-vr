@@ -13,6 +13,7 @@ const state = {
   sev: q.has('sev') ? Number(q.get('sev')) : 0.5,
   view: q.get('view') === 'AP' ? 'AP' : 'LAT',
   tilt: q.has('tilt') ? Number(q.get('tilt')) : 0,
+  roll: q.has('roll') ? Number(q.get('roll')) : 0,
   colours: q.get('colours') === '1',
   see: q.get('see') || 'none',
   beam: q.get('beam') !== '0',
@@ -37,6 +38,23 @@ async function main() {
   const f = fractureFrame(meta, name => view.vertices(name));
   const C = meta.carm;
   const UP = new THREE.Vector3(0, 1, 0);
+  const D2R = Math.PI / 180;
+
+  /** Tilt and roll that give a true lateral of the head-neck fragment: the beam is perpendicular to the neck axis
+   *  and lies in the fragment's own neck-shaft plane (the plane of the neck and the femoral shaft as it was before
+   *  the fracture), so head and neck are seen in profile whatever the shaft is doing. */
+  function trueLateral(P) {
+    const R = new THREE.Matrix3().setFromMatrix4(P);
+    const n = f.neck.clone().applyMatrix3(R).normalize();
+    const sh = f.s.clone().applyMatrix3(R).normalize();
+    const d = sh.clone().addScaledVector(n, -sh.dot(n)).normalize();
+    const d0 = new THREE.Vector3().fromArray(C.lateralDir).normalize();
+    if (d.dot(d0) < 0) d.negate();
+    const roll = Math.asin(Math.max(-1, Math.min(1, d.dot(UP)))) / D2R;
+    const dh = d.clone().addScaledVector(UP, -d.dot(UP)).normalize();
+    const tilt = Math.atan2(new THREE.Vector3().crossVectors(d0, dh).dot(UP), d0.dot(dh)) / D2R;
+    return { tilt: Math.round(tilt), roll: Math.round(roll) };
+  }
 
   function geometry() {
     const iso = new THREE.Vector3().fromArray(C.iso);
@@ -46,8 +64,13 @@ async function main() {
       V = new THREE.Vector3(0, 0, -1);         // head up
       U = new THREE.Vector3().crossVectors(V, d); // patient's left on the right of the screen
     } else {
-      d = new THREE.Vector3().fromArray(C.lateralDir).applyAxisAngle(UP, state.tilt * Math.PI / 180).normalize();
-      V = UP.clone().addScaledVector(d, -UP.dot(d)).normalize(); // anterior up
+      // horizontal lateral beam perpendicular to the neck; ROLL turns the C so the beam aims up (+) or down (−)
+      // out of the horizontal plane, TILT swings it about the vertical (towards the head or the foot)
+      const d0 = new THREE.Vector3().fromArray(C.lateralDir).normalize();
+      const U0 = new THREE.Vector3().crossVectors(d0, UP).normalize();
+      d = d0.clone().applyAxisAngle(U0, state.roll * D2R).applyAxisAngle(UP, state.tilt * D2R).normalize();
+      V = UP.clone().applyAxisAngle(U0, state.roll * D2R).applyAxisAngle(UP, state.tilt * D2R);
+      V.addScaledVector(d, -V.dot(d)).normalize();                // anterior up
       U = new THREE.Vector3().crossVectors(d, V);                // femoral head towards the same side as on the AP
     }
     const src = iso.clone().addScaledVector(d, -C.SOD);
@@ -74,8 +97,13 @@ async function main() {
     $('range').textContent = p.range ? `Mild → severe: ${p.range}` : '';
     $('sevrow').style.display = p.range ? '' : 'none';
     $('nums').innerHTML = describe(measure(f, P, D), f).map(s => `<li>${s}</li>`).join('');
-    $('tiltrow').style.display = state.view === 'LAT' ? '' : 'none';
-    $('tiltval').textContent = `${state.tilt > 0 ? '+' : ''}${state.tilt}°`;
+    for (const r of ['tiltrow', 'rollrow', 'truerow']) $(r).style.display = state.view === 'LAT' ? '' : 'none';
+    $('tiltval').textContent = sgn(state.tilt);
+    $('rollval').textContent = sgn(state.roll);
+    const tl = trueLateral(P);
+    const onTrue = tl.tilt === state.tilt && tl.roll === state.roll;
+    $('btnTrue').classList.toggle('on', onTrue);
+    $('trueinfo').textContent = `True lateral of the neck: tilt ${sgn(tl.tilt)}, roll ${sgn(tl.roll)}`;
     $('btnLat').classList.toggle('on', state.view === 'LAT');
     $('btnAP').classList.toggle('on', state.view === 'AP');
     $('btnCol').classList.toggle('on', state.colours);
@@ -86,6 +114,8 @@ async function main() {
     dirty = true;
     $('busy').style.opacity = 1;
   }
+
+  function sgn(v) { return `${v > 0 ? '+' : ''}${v}°`; }
 
   // ---------- controls ----------
   const sel = $('preset');
@@ -98,6 +128,12 @@ async function main() {
   const tilt = $('tilt');
   tilt.value = state.tilt;
   tilt.oninput = () => { state.tilt = Number(tilt.value); refresh(); };
+  const roll = $('roll');
+  roll.value = state.roll;
+  roll.oninput = () => { state.roll = Number(roll.value); refresh(); };
+  const setCarm = (t, r) => { state.tilt = t; state.roll = r; tilt.value = t; roll.value = r; refresh(); };
+  $('btnTrue').onclick = () => { const { P, D } = current(); const tl = trueLateral(P); setCarm(tl.tilt, tl.roll); };
+  $('btnStd').onclick = () => setCarm(0, 0);
   $('btnLat').onclick = () => { state.view = 'LAT'; refresh(); };
   $('btnAP').onclick = () => { state.view = 'AP'; refresh(); };
   $('btnCol').onclick = () => { state.colours = !state.colours; refresh(); };
@@ -132,7 +168,7 @@ async function main() {
       const g = geometry();
       drr.shoot(g, P.clone().invert(), D.clone().invert(), {
         label: state.view === 'AP' ? 'AP' : 'LAT',
-        sub: state.view === 'AP' ? '' : `TILT ${state.tilt > 0 ? '+' : ''}${state.tilt}°`,
+        sub: state.view === 'AP' ? '' : `TILT ${sgn(state.tilt)}  ROLL ${sgn(state.roll)}`,
       });
     }
     view.render();
@@ -140,7 +176,9 @@ async function main() {
 
   // hooks for automated screenshots
   window.viewer = {
-    set(s) { Object.assign(state, s); sel.value = state.preset; sev.value = Math.round(state.sev * 100); tilt.value = state.tilt; refresh(); },
+    set(s) { Object.assign(state, s); sel.value = state.preset; sev.value = Math.round(state.sev * 100); tilt.value = state.tilt; roll.value = state.roll; refresh(); },
+    trueLateral() { $('btnTrue').onclick(); },
+    get trueInfo() { return $('trueinfo').textContent; },
     beamView() { view.beamView(lastGeom); },
     cam(pos, up) { view.setUp(new THREE.Vector3(...up)); view.camera.position.fromArray(pos); view.controls.target.copy(view.iso); view.camera.lookAt(view.iso); view.controls.update(); },
     get numbers() { return [...document.querySelectorAll('#nums li')].map(l => l.textContent); },
