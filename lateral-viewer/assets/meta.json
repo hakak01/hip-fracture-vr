@@ -1,0 +1,207 @@
+{
+ "case": "PETCT_d3dac0d1cd",
+ "dataset": "autoPET / FDG-PET-CT-Lesions (TCIA), via NCI Imaging Data Commons",
+ "citation": "Gatidis S et al. A whole-body FDG-PET/CT dataset with manually annotated tumor lesions. Sci Data 2022;9:601. doi:10.1038/s41597-022-01718-3",
+ "licence": "CC BY 4.0",
+ "patient": "female, 75 years; CT 1 mm slices every 0.7 mm, 0.86 mm pixels, IV contrast (removed)",
+ "frame": "mm; +x patient left, +y anterior, +z inferior; origin midway between femoral head centres",
+ "position": {
+  "operated": "right hip extended, patella up, 15 deg internal rotation",
+  "well": "left thigh lifted out of the beam (removed beyond a rounded stump below the left hip)",
+  "R_op": [
+   [
+    0.97,
+    0.24,
+    -0.07
+   ],
+   [
+    -0.26,
+    0.93,
+    -0.28
+   ],
+   [
+    0.0,
+    0.29,
+    0.96
+   ]
+  ]
+ },
+ "measured": {
+  "neckShaftAngle": 130.1,
+  "anteversion": 14.8,
+  "anteversionShaftAxis": 20.0,
+  "method": "neck axis vs posterior condylar line, viewed along head centre -> knee centre"
+ },
+ "landmarks": {
+  "headCenter": [
+   -85.81,
+   -1.76,
+   18.07
+  ],
+  "headRadius": 21.09,
+  "neckAxis": [
+   -0.69,
+   0.0,
+   0.72
+  ],
+  "shaftAxis": [
+   0.1,
+   0.07,
+   0.99
+  ],
+  "shaftPoint": [
+   -108.66,
+   16.15,
+   219.64
+  ],
+  "knee": [
+   -91.63,
+   -1.76,
+   414.18
+  ],
+  "headCenterContra": [
+   85.81,
+   1.76,
+   -18.07
+  ],
+  "lt": [
+   -92.09,
+   -18.13,
+   84.75
+  ],
+  "gtTip": [
+   -133.23,
+   -8.65,
+   20.05
+  ],
+  "antProx": [
+   -127.42,
+   9.98,
+   39.03
+  ],
+  "antDist": [
+   -134.75,
+   9.2,
+   44.82
+  ],
+  "postDist": [
+   -123.63,
+   -26.24,
+   53.69
+  ],
+  "canal": [
+   -132.75,
+   -8.26,
+   52.03
+  ],
+  "anterior": [
+   -0.01,
+   1.0,
+   -0.07
+  ]
+ },
+ "fracture": {
+  "type": "AO/OTA 31-A1 two-part pertrochanteric (lateral wall intact, lesser trochanter on the shaft)",
+  "normal": [
+   0.63,
+   -0.0,
+   -0.78
+  ],
+  "point": [
+   -120.1,
+   -9.52,
+   50.76
+  ],
+  "fxLat": [
+   -144.3,
+   -10.1,
+   31.2
+  ],
+  "fxMed": [
+   -95.9,
+   -8.95,
+   70.31
+  ]
+ },
+ "carm": {
+  "SID": 1000.0,
+  "SOD": 620.0,
+  "detR": 150.0,
+  "iso": [
+   -108.72,
+   -1.67,
+   41.94
+  ],
+  "lateralDir": [
+   -0.72,
+   -0.0,
+   -0.69
+  ],
+  "apDir": [
+   0,
+   1,
+   0
+  ]
+ },
+ "volume": {
+  "softHU": 30.0,
+  "excessScale": 8.0,
+  "baseScale": 12.0,
+  "baseOffset": -1000.0,
+  "labels": "lab: 0 static, 128 proximal (head-neck) fragment, 255 distal (shaft) fragment; linear in between",
+  "layout": "x-fastest uint8 planes; first plane byte-delta along x. fine/mid: excess, lab. coarse: base",
+  "levels": {
+   "fine": {
+    "file": "vol_fine.bin.gz",
+    "dims": [
+     238,
+     201,
+     307
+    ],
+    "spacing": 0.8,
+    "center0": [
+     -191.11,
+     -76.96,
+     -52.33
+    ]
+   },
+   "mid": {
+    "file": "vol_mid.bin.gz",
+    "dims": [
+     219,
+     166,
+     294
+    ],
+    "spacing": 1.6,
+    "center0": [
+     -204.31,
+     -126.96,
+     -151.93
+    ]
+   },
+   "coarse": {
+    "file": "vol_coarse.bin.gz",
+    "dims": [
+     138,
+     97,
+     206
+    ],
+    "spacing": 3.2,
+    "center0": [
+     -213.11,
+     -140.56,
+     -280.73
+    ]
+   }
+  }
+ },
+ "meshes": {
+  "file": "bones.glb",
+  "names": [
+   "femur_prox",
+   "femur_dist",
+   "pelvis",
+   "femur_contra"
+  ]
+ }
+}
