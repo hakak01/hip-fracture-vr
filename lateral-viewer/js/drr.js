@@ -196,7 +196,8 @@ export class DRR {
     u.uDetV.value.copy(geom.V);
     u.uInvP.value.copy(invP);
     u.uInvD.value.copy(invD);
-    this.job = { info, strip: 0, strips: STRIPS };
+    // more, smaller strips in VR keep the headset frame rate smooth
+    this.job = { info, strip: 0, strips: this.renderer.xr.isPresenting ? 16 : STRIPS };
   }
 
   get busy() { return !!this.job; }
@@ -207,12 +208,15 @@ export class DRR {
     if (!job) return false;
     const r = this.renderer;
     const prev = r.getRenderTarget();
+    const xrOn = r.xr.enabled;
+    r.xr.enabled = false; // offscreen render: not through the headset camera
     const h = SIZE / job.strips;
     this.rt.scissorTest = true;
     this.rt.scissor.set(0, job.strip * h, SIZE, h);
     r.setRenderTarget(this.rt);
     r.render(this.scene, this.cam);
     r.setRenderTarget(prev);
+    r.xr.enabled = xrOn;
     job.strip++;
     if (job.strip < job.strips) return false;
     r.readRenderTargetPixels(this.rt, 0, 0, SIZE, SIZE, this.pixels);

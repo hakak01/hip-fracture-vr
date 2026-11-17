@@ -11,6 +11,14 @@ export async function vrSupported() {
   }
 }
 
+export async function arSupported() {
+  try {
+    return !!(navigator.xr && await navigator.xr.isSessionSupported('immersive-ar'));
+  } catch (e) {
+    return false;
+  }
+}
+
 export class XRSystem {
   /**
    * @param renderer three.js renderer
@@ -72,8 +80,9 @@ export class XRSystem {
     renderer.xr.addEventListener('sessionend', () => { this.session = null; this.onEnd && this.onEnd(); });
   }
 
-  async enter() {
-    const session = await navigator.xr.requestSession('immersive-vr', {
+  /** @param mode 'immersive-vr' (default) or 'immersive-ar' (passthrough) */
+  async enter(mode = 'immersive-vr') {
+    const session = await navigator.xr.requestSession(mode, {
       optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking'],
     });
     this.renderer.xr.setReferenceSpaceType('local-floor');

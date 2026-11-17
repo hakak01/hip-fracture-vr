@@ -61,3 +61,9 @@ Not for clinical use. Separate from the VR trainer in the repository root, which
      `meta.json` and `vol_*.bin.gz` into `assets/`.
   `build_assets.py` and `fracture.py` are adapted from `../tools/`; `anatomy.py` measures the femur;
   `warp.py` positions the legs.
+
+## VR and passthrough (Meta Quest 3 browser)
+Open the page in the Quest browser. If the headset supports it, "Enter VR" and "Passthrough" show under the controls.
+The bones are life size, 1 m high, 0.6 m in front of you. Grip (squeeze) to move and turn them; the X-ray monitor is on
+the left and a control panel on the right (they press the page's own controls). "Beam view" puts you at the X-ray source.
+Leave with the red "Exit VR" button, or hold B or Y for 1 s. Code: `js/xrmode.js` (uses `../js/xr.js` and `../js/panel.js`).

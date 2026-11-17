@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { loadAssets } from './assets.js';
 import { DRR } from './drr.js';
 import { View3D } from './view3d.js';
+import { setupXR } from './xrmode.js';
 import { PRESETS, fractureFrame, measure, describe } from './presets.js';
 
 const $ = id => document.getElementById(id);
@@ -27,7 +28,7 @@ function progress(p) {
 async function main() {
   const { meta, gltf, volumes } = await loadAssets('assets/', progress);
   const canvas = $('c3d');
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: q.has('test') });
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: !!navigator.xr, preserveDrawingBuffer: q.has('test') });
   renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
   const drr = new DRR(renderer, volumes, meta);
   drr.canvas.id = 'xr';
@@ -78,7 +79,7 @@ async function main() {
     return { src, det, dir: d, U: U.multiplyScalar(C.detR), V: V.multiplyScalar(C.detR) };
   }
 
-  let dirty = true, shots = 0, lastGeom = null;
+  let dirty = true, shots = 0, lastGeom = null, xrm = null;
   function current() { return PRESETS[state.preset].build(f, state.sev); }
 
   function refresh() {
@@ -113,6 +114,7 @@ async function main() {
     for (const k of ['none', 'prox', 'dist']) $(`see_${k}`).classList.toggle('on', state.see === k);
     dirty = true;
     $('busy').style.opacity = 1;
+    if (xrm) xrm.sync();
   }
 
   function sgn(v) { return `${v > 0 ? '+' : ''}${v}°`; }
@@ -153,12 +155,14 @@ async function main() {
 
   drr.onImage = () => {
     shots++;
+    if (xrm) xrm.imageUpdated();
     window.__shots = shots;
     if (!drr.busy && !dirty) $('busy').style.opacity = 0;
   };
   refresh();
   if (q.get('cam') === 'beam') view.beamView(lastGeom);
   $('loading').remove();
+  xrm = setupXR({ renderer, view, drr, getGeom: () => lastGeom, $ });
 
   renderer.setAnimationLoop(() => {
     if (drr.busy) drr.tick();
@@ -171,7 +175,7 @@ async function main() {
         sub: state.view === 'AP' ? '' : `TILT ${sgn(state.tilt)}  ROLL ${sgn(state.roll)}`,
       });
     }
-    view.render();
+    if (xrm && xrm.active) xrm.frame(); else view.render();
   });
 
   // hooks for automated screenshots
