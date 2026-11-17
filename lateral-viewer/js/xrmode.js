@@ -44,9 +44,9 @@ export function setupXR({ renderer, view, drr, getGeom, $ }) {
   tex.colorSpace = THREE.SRGBColorSpace;
   const S = 0.42;
   const screen = new THREE.Mesh(new THREE.PlaneGeometry(S, S), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }));
-  const frame = new THREE.Mesh(new THREE.PlaneGeometry(S + 0.03, S + 0.03), new THREE.MeshBasicMaterial({ color: 0x15191c }));
-  frame.position.z = -0.002;
-  monitor.add(frame, screen);
+  const bezel = new THREE.Mesh(new THREE.PlaneGeometry(S + 0.03, S + 0.03), new THREE.MeshBasicMaterial({ color: 0x15191c }));
+  bezel.position.z = -0.002;
+  monitor.add(bezel, screen);
   monitor.position.set(-0.62, 1.35, -0.3);
   ui.add(monitor);
   monitor.lookAt(0, 1.35, 0);
