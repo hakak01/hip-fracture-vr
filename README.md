@@ -3,7 +3,9 @@
 A browser and Meta Quest 3 (WebXR) trainer for a trochanteric hip fracture: reduce the fracture, then place the DHS guidewire.
 Built with three.js. No install, no build step. See [PLAN.md](PLAN.md) for the full brief and milestones.
 
-**Live app:** https://hakak01.github.io/hip-fracture-vr/ (after GitHub Pages is switched on)
+**Live site (menu):** https://hakak01.github.io/hip-fracture-vr/
+- VR trainer: https://hakak01.github.io/hip-fracture-vr/trainer.html
+- Lateral malreduction viewer: https://hakak01.github.io/hip-fracture-vr/lateral-viewer/
 
 Not for clinical use.
 
@@ -31,7 +33,8 @@ Not for clinical use.
 - 30° anteromedial oblique view: Chen SY, Chang SM, Tuladhar R, et al. *A new fluoroscopic view for evaluation of anteromedial cortex reduction quality during cephalomedullary nailing for intertrochanteric femur fractures: the 30° oblique tangential projection.* BMC Musculoskelet Disord 2020;21:719. [doi:10.1186/s12891-020-03668-6](https://doi.org/10.1186/s12891-020-03668-6)
 
 ## Files
-- `index.html`, `css/`, `js/` — the app.
+- `index.html` — menu page with a button for each simulator.
+- `trainer.html`, `css/`, `js/` — the VR trainer.
 - `assets/ct/` — `anatomy.glb` (bone and skin meshes), `volume.bin.gz` (CT volume for the X-ray images), `fracture.bin.gz` (fragment distance fields and contact points), `meta.json` (landmarks, muscle attachments, fracture plane).
 - `js/carm.js` (C-arm movements, laser), `js/dhs.js` (angle guide, guidewire, drill), `js/score.js` (TAD, Cleveland), `js/audio.js` (sounds),
 - `js/physics.js` (fragments, contacts, holds), `js/muscles.js` (muscle and soft-tissue settings), `js/reduce.js` (sliders, Auto-reduce), `js/fracture.js` (fragment display, muscle lines, skin), `js/tools.js` (VR instruments), `js/tuning.js` (hidden panel).

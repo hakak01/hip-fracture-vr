@@ -2,134 +2,50 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0f1a20">
-  <title>Hip Fracture VR Trainer</title>
-  <link rel="stylesheet" href="css/style.css">
-  <script type="importmap">
-    {
-      "imports": {
-        "three": "./lib/three/three.module.min.js",
-        "three/addons/": "./lib/three/addons/"
-      }
+  <title>Hip Fracture Simulators</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; padding: 32px 20px;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: #0f1a20; color: #e6eef2;
+      display: flex; flex-direction: column; align-items: center;
     }
-  </script>
+    h1 { font-size: 1.5rem; margin: 8px 0 4px; text-align: center; }
+    p.sub { margin: 0 0 28px; color: #8fa6b2; text-align: center; font-size: 0.95rem; }
+    .list { width: 100%; max-width: 520px; display: flex; flex-direction: column; gap: 16px; }
+    a.card {
+      display: block; text-decoration: none; color: inherit;
+      background: #18272f; border: 1px solid #2a3f4a; border-radius: 14px;
+      padding: 20px 20px 18px;
+    }
+    a.card:active, a.card:hover { border-color: #4fb3d9; background: #1c2f39; }
+    .card h2 { margin: 0 0 6px; font-size: 1.2rem; color: #7fd0ef; }
+    .card p { margin: 0; color: #b8c8d0; font-size: 0.95rem; line-height: 1.4; }
+    .tag { display: inline-block; margin-top: 10px; font-size: 0.8rem; color: #8fa6b2; }
+    footer { margin-top: 32px; color: #61798a; font-size: 0.8rem; text-align: center; }
+  </style>
 </head>
 <body>
-  <div id="app"></div>
+  <h1>Hip Fracture Simulators</h1>
+  <p class="sub">Trochanteric fracture (AO 31-A1) — choose a simulator</p>
 
-  <div id="loading">
-    <div class="box">
-      <h1>Hip Fracture VR Trainer</h1>
-      <p id="load-text">Loading…</p>
-      <div class="bar"><div id="load-bar"></div></div>
-      <p class="small">CT: TotalSegmentator dataset (CC BY 4.0)</p>
-    </div>
+  <div class="list">
+    <a class="card" href="trainer.html">
+      <h2>Reduction + DHS guidewire trainer</h2>
+      <p>Reduce the fracture with traction, rotation, Schanz pin and lever, then place the DHS guidewire under the C-arm. Scored by tip-apex distance and Cleveland zone.</p>
+      <span class="tag">Phone browser · Meta Quest 3 (VR)</span>
+    </a>
+
+    <a class="card" href="lateral-viewer/">
+      <h2>Lateral malreduction viewer</h2>
+      <p>See common malreductions on the lateral (or AP) C-arm image side by side with the matching 3D bone model.</p>
+      <span class="tag">Phone browser</span>
+    </a>
   </div>
 
-  <div id="title">
-    <b>Hip VR</b> <span id="side-label">Right hip</span>
-    <button id="btn-about" class="link">About</button>
-  </div>
-
-  <div id="pip" title="Tap to enlarge">
-    <div class="shot"><canvas id="pip-AP" width="512" height="512"></canvas></div>
-    <div class="shot"><canvas id="pip-LAT" width="512" height="512"></canvas></div>
-  </div>
-
-  <div id="toast" hidden></div>
-
-  <div id="toolbar">
-    <div class="tabs">
-      <button class="tab on" data-tab="carm">C-arm</button>
-      <button class="tab" data-tab="reduce">Reduce</button>
-      <button class="tab" data-tab="auto">Auto</button>
-      <button class="tab" data-tab="wire">Wire</button>
-      <button class="tab" data-tab="view">View</button>
-      <button id="btn-vr" class="vr" hidden>Enter VR</button>
-    </div>
-    <div class="pane" data-pane="carm">
-      <div class="row">
-        <button id="btn-ap" class="big">AP</button>
-        <button id="btn-lat" class="big">Lateral</button>
-        <button id="btn-obl" class="big">Oblique 30°</button>
-        <button id="btn-xray" class="big xray">☢ X-ray</button>
-        <button id="btn-invert">Invert</button>
-        <button id="btn-laser" class="on">Laser</button>
-      </div>
-      <div id="carm-sliders" class="sliders"></div>
-      <div class="row"><span class="readout" id="carm-readout"></span></div>
-    </div>
-    <div class="pane" data-pane="reduce" hidden>
-      <div id="sliders"></div>
-      <div class="row">
-        <button id="btn-release">Release all</button>
-        <span class="readout" id="readout-r"></span>
-      </div>
-    </div>
-    <div class="pane" data-pane="auto" hidden>
-      <div class="row" id="auto-buttons"></div>
-      <div class="row">
-        <button id="btn-restart">Restart fracture</button>
-        <span class="readout" id="readout-a"></span>
-      </div>
-    </div>
-    <div class="pane" data-pane="wire" hidden>
-      <div class="row">
-        <span class="lbl">Angle guide 135°</span>
-        <button id="btn-guide" class="big">Place guide</button>
-        <button id="btn-unguide">Remove guide</button>
-      </div>
-      <div id="guide-sliders" class="sliders"></div>
-      <div class="row">
-        <span class="lbl">Guidewire</span>
-        <button id="btn-back" class="hold">◀ Withdraw</button>
-        <button id="btn-drill" class="hold big">Drill ▶</button>
-        <button id="btn-unwire">Remove wire</button>
-        <button id="btn-score" class="big">Score</button>
-      </div>
-      <div class="row"><span class="readout" id="wire-status"></span></div>
-      <div id="score-box" class="score" hidden></div>
-    </div>
-    <div class="pane" data-pane="view" hidden>
-      <div class="row">
-        <span class="lbl">Skin</span>
-        <button id="btn-skin" class="toggle on">On</button>
-        <input id="skin-fade" type="range" min="0" max="100" value="100" aria-label="Skin fade">
-        <span class="lbl">Muscles</span>
-        <button id="btn-muscles" class="toggle on">On</button>
-      </div>
-      <div class="row">
-        <span class="lbl">Side</span>
-        <button id="btn-right" class="seg on">Right</button>
-        <button id="btn-left" class="seg">Left</button>
-        <button id="btn-view">Reset view</button>
-      </div>
-    </div>
-  </div>
-
-  <div id="tune" hidden>
-    <div class="head"><b>Tuning</b> <button id="tune-close" class="link">Close</button></div>
-    <div id="tune-body"></div>
-  </div>
-
-  <div id="about" hidden>
-    <div class="box">
-      <h2>About</h2>
-      <p>Training simulator for a trochanteric (AO 31A1) hip fracture: reduction and DHS guidewire. Not for clinical use.</p>
-      <p><b>CT data:</b> case <span id="about-case"></span> from the TotalSegmentator dataset v2.0.1
-        (Wasserthal J. et al. <i>Radiology: Artificial Intelligence</i> 2023;5(5):e230024).
-        Licence <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>.
-        Changed: cropped, resampled, bone and skin surfaces extracted.
-        <a href="https://doi.org/10.5281/zenodo.10047292" target="_blank" rel="noopener">doi:10.5281/zenodo.10047292</a></p>
-      <p><b>3D engine:</b> three.js (MIT licence).</p>
-      <p class="small">Browser: drag to turn, pinch or scroll to zoom, two fingers to pan. Use the tabs at the bottom. Tap the X-ray pictures to enlarge them. Quest: grip the blue ring on the image intensifier to rotate the C-arm, the blue bar on its arm to move it; the A or X button is the X-ray pedal.</p>
-      <p class="small">Scoring: tip-apex distance (Baumgaertner MR et al., J Bone Joint Surg Am 1995;77:1058) and Cleveland zones (Cleveland M et al., J Bone Joint Surg Am 1959;41:1399).</p>
-      <p class="small">Oblique 30° view: Chen SY, Chang SM, et al. BMC Musculoskelet Disord 2020;21:719. <a href="https://doi.org/10.1186/s12891-020-03668-6" target="_blank" rel="noopener">doi:10.1186/s12891-020-03668-6</a></p>
-      <button id="btn-about-close" class="big">Close</button>
-    </div>
-  </div>
-
-  <script type="module" src="js/main.js"></script>
+  <footer>Training aid only. Not for clinical use.</footer>
 </body>
 </html>
