@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { loadAssets } from './assets.js';
 import { DRR } from './drr.js';
 import { View3D } from './view3d.js';
-import { setupXR } from './xrmode.js';
+import { setupXR } from './xrmode.js?v=2';
 import { PRESETS, fractureFrame, measure, describe } from './presets.js';
 
 const $ = id => document.getElementById(id);
